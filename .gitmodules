@@ -1,0 +1,3 @@
+[submodule "components/drone_controller"]
+	path = components/drone_controller
+	url = ssh://git@forgejo.galard.uk:222/Cansat/drone_controller.git

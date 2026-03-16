@@ -2,6 +2,8 @@
 build/
 target/
 
+.direnv
+
 sdkconfig.old
 sdkconfig
 debug/

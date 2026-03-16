@@ -12,4 +12,5 @@ Cargo.lock
 **/*.rs.bk
 *.pdb
 .idea/
+.cache/
 cmake-build-debug/

@@ -1,52 +1,60 @@
-/* Hello World Example
 
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-#include "esp_err.h"
-#include "esp_flash.h"
-#include "esp_idf_version.h"
-#include "esp_system.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "sdkconfig.h"
-#include <inttypes.h>
-#include <stdio.h>
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 4, 0)
-#include "esp_chip_info.h"
-#endif
-
+#include "BNO08x.hpp"
+#include "BNO08xGlobalTypes.hpp"
 #include "drone_controller.h"
+#include "esp_timer.h"
+#include <cstdint>
+#include <stdio.h>
+
+static const constexpr char *TAG = "Main";
+
+static struct Vec3C accel = {0, 0, 0};
+static struct QuatC rot = {0, 0, 0, 0};
+static struct Vec3C pos = {0, 0, 0};
+static struct Vec3C vel = {0, 0, 0};
+static int64_t last_time = -1;
 
 extern "C" void app_main(void) {
-  uint32_t flash_size;
+  BNO08x *imu = new BNO08x();
 
-  printf("Hello world!\n");
-
-  /* Print chip information */
-  esp_chip_info_t chip_info;
-  esp_chip_info(&chip_info);
-  printf("This is %s chip with %d CPU cores, WiFi%s%s, ", CONFIG_IDF_TARGET,
-         chip_info.cores, (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
-         (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "");
-
-  printf("silicon revision %d, ", chip_info.revision);
-
-  ESP_ERROR_CHECK(esp_flash_get_size(NULL, &flash_size));
-  printf("%" PRIu32 "MB %s flash\n", flash_size / (1024 * 1024),
-         (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded"
-                                                       : "external");
-
-  printf("Free heap: %" PRIu32 "\n", esp_get_free_heap_size());
-
-  for (int i = 10; i >= 0; i--) {
-    printf("Restarting in %d seconds...\n", i);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  if (!imu->initialize()) {
+    ESP_LOGE(TAG, "Init failure");
+    return;
   }
-  printf("Restarting now.\n");
-  fflush(stdout);
-  esp_restart();
+
+  // Use the pointer in your lambdas
+  imu->rpt.rv_game.enable(2500UL);
+  imu->rpt.linear_accelerometer.enable(10000UL);
+  imu->dynamic_calibration_autosave_enable();
+
+  imu->register_cb([imu]() {
+    if (imu->rpt.linear_accelerometer.has_new_data()) {
+      auto sens_accel = imu->rpt.linear_accelerometer.get();
+      accel = {sens_accel.x, sens_accel.y, sens_accel.z};
+
+      int64_t time = esp_timer_get_time();
+      if (last_time != -1) {
+        float dt = (time - last_time) / 1000000.0;
+
+        Vec3C init_vel = vel;
+        Vec3C delta = apply_rot(&accel, &rot);
+
+        multiply_vec_by(&delta, dt);
+        add_to_vec(&vel, &delta);
+
+        delta = init_vel;
+        multiply_vec_by(&delta, dt);
+        add_to_vec(&pos, &delta);
+      }
+      last_time = time;
+    }
+    if (imu->rpt.rv_game.has_new_data()) {
+      auto sens_rot = imu->rpt.rv_game.get_quat();
+      rot = {sens_rot.i, sens_rot.j, sens_rot.k, sens_rot.real};
+    }
+  });
+
+  while (1) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
 }

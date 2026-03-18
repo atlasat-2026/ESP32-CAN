@@ -8,3 +8,12 @@
 [submodule "components/esp32_Adafruit_GPS"]
 	path = components/esp32_Adafruit_GPS
 	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_Adafruit_GPS.git
+[submodule "components/esp32_Adafruit_BME280_Library"]
+	path = components/esp32_Adafruit_BME280_Library
+	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_Adafruit_BME280_Library.git
+[submodule "components/esp32_Adafruit_BusIO"]
+	path = components/esp32_Adafruit_BusIO
+	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_Adafruit_BusIO.git
+[submodule "components/esp32_Adafruit_Sensor"]
+	path = components/esp32_Adafruit_Sensor
+	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_Adafruit_Sensor.git

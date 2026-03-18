@@ -3,4 +3,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+idf_build_replace_option_from_property(COMPILE_OPTIONS "-Werror" "")
+
 project(esp32-hello-rust)

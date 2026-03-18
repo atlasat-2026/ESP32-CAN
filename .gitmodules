@@ -5,3 +5,6 @@
 [submodule "components/esp32_BNO08x"]
 	path = components/esp32_BNO08x
 	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_BNO08x.git
+[submodule "components/esp32_Adafruit_GPS"]
+	path = components/esp32_Adafruit_GPS
+	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_Adafruit_GPS.git

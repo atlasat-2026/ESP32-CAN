@@ -21,6 +21,10 @@ void setup() {
     ESP_LOGE(TAG, "Couldn't find a valid sensor");
     return;
   }
+  bme.setSampling(Adafruit_BME280::MODE_NORMAL, Adafruit_BME280::SAMPLING_X2,
+                  Adafruit_BME280::SAMPLING_X2, Adafruit_BME280::SAMPLING_NONE,
+                  Adafruit_BME280::FILTER_OFF,
+                  Adafruit_BME280::STANDBY_MS_62_5);
 
   bme_temp->printSensorDetails();
   bme_pressure->printSensorDetails();

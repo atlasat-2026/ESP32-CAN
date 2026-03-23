@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cmath>
+#include <cstdint>
+
 #include "BNO08x.hpp"
 #include "BNO08xGlobalTypes.hpp"
 #include "drone_controller.h"
-#include <cmath>
-#include <cstdint>
+#include "freertos/idf_additions.h"
 
 struct imu_state {
   Vec3C accel = {0, 0, 0};

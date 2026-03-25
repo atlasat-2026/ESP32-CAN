@@ -1,12 +1,14 @@
 #pragma once
 
+#include "HardwareSerial.h"
 #include "Wire.h"
 #include <Adafruit_GPS.h>
 
 struct GPS {
   Adafruit_GPS gps;
   GPS(TwoWire *theWire) {
-    gps = Adafruit_GPS(theWire);
+    Serial2.begin(9600);
+    gps = Adafruit_GPS(&Serial2);
     gps.begin(0x10);
     gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 

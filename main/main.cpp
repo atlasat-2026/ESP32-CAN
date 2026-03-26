@@ -1,44 +1,54 @@
-#include "HardwareSerial.h"
-#include "dshot_utils.h"
 
 #include "esp32-hal.h"
 #include "esp_log.h"
 #include <cmath>
-#include <iostream>
+#include <cstdio>
 
-#include "DShotRMT.h"
-#include "env_sens.h"
+#include "freertos/idf_additions.h"
+#include "freertos/projdefs.h"
+#include "gps.h"
 
 static const constexpr char *TAG = "Main";
-const gpio_num_t MOTOR_PIN = GPIO_NUM_22;
 
-DShotRMT motor(MOTOR_PIN, DSHOT300, true);
+SemaphoreHandle_t gps_mutex;
+GPS *gps = nullptr;
+
+void gps_poll_task(void *_) {
+  while (true) {
+    if (xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
+      gps->poll();
+      xSemaphoreGive(gps_mutex);
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+
+void gps_poll_init() {
+  gps_mutex = xSemaphoreCreateMutex();
+  if (gps_mutex != NULL) {
+    xTaskCreate(gps_poll_task, "Writer", 2048, NULL, 1, NULL);
+  }
+}
 
 extern "C" void app_main(void) {
   initArduino();
-  printf("beg: %d", motor.begin().result_code);
+  gps = new GPS();
 
-  ESP_LOGI(TAG, "Arming ESC...");
-  // Send 0 throttle for 4 seconds to arm
-  unsigned long armTime = millis();
-  while (millis() - armTime < 4000) {
-    motor.sendThrottlePercent(0);
-    // delay(1);
+  while (true) {
+
+    if (xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
+      ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f",
+               gps->gps.latitudeDegrees, gps->gps.longitudeDegrees,
+               gps->gps.altitude);
+      if (gps->gps_avaliable()) {
+
+        auto D_pos = gps->get_coordinates().value();
+        ESP_LOGI(TAG, "    -> D(pos): (%f, %f, %f)", D_pos[0], D_pos[1],
+                 D_pos[2]);
+      }
+      xSemaphoreGive(gps_mutex);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(250));
   }
-  delay(50);
-
-  ESP_LOGI(TAG, "Motor Armed. Ramping up...");
-  // Send 10% throttle for 5 seconds
-  unsigned long runTime = millis();
-  while (millis() - runTime < 5000) {
-    auto res = motor.sendThrottlePercent(10);
-    printf("%d, %d\n", res.result_code, res.erpm);
-    //
-    // ESP_LOGI(TAG, "current: %d",
-    // motor.getTelemetry().telemetry_data.current);
-    // delay(1);
-  }
-
-  ESP_LOGI(TAG, "Stopping motor");
-  motor.sendThrottlePercent(0);
 }

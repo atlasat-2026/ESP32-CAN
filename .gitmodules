@@ -19,4 +19,14 @@
 	url = ssh://git@forgejo.galard.uk:222/Cansat/esp32_Adafruit_Sensor.git
 [submodule "components/DShotRMT"]
 	path = components/DShotRMT
-	url = https://github.com/derdoktor667/DShotRMT
+	url = ssh://git@forgejo.galard.uk:222/Cansat/DShotRMT.git
+
+
+[submodule "components/RFM69_LowPowerLab"]
+	path = components/RFM69_LowPowerLab
+	url = ssh://git@forgejo.galard.uk:222/Cansat/RFM69_LowPowerLab.git
+
+
+[submodule "components/SPIFlash_LowPowerLab"]
+	path = components/SPIFlash_LowPowerLab
+	url = ssh://git@forgejo.galard.uk:222/Cansat/SPIFlash_LowPowerLab.git

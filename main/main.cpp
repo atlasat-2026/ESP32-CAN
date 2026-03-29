@@ -33,9 +33,9 @@ void gps_poll_init() {
 extern "C" void app_main(void) {
   initArduino();
   gps = new GPS();
+  gps_poll_init();
 
   while (true) {
-
     if (xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
       ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f",
                gps->gps.latitudeDegrees, gps->gps.longitudeDegrees,
@@ -48,7 +48,6 @@ extern "C" void app_main(void) {
       }
       xSemaphoreGive(gps_mutex);
     }
-
     vTaskDelay(pdMS_TO_TICKS(250));
   }
 }

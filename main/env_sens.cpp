@@ -1,30 +1,35 @@
+#include "env_sens.h"
 #include "esp_log.h"
 #include <Adafruit_BME280.h>
 #include <SPI.h>
 #include <Wire.h>
 
-#define SEALEVELPRESSURE_HPA (1013.25)
+#include "freertos/idf_additions.h"
+#include "nav.h"
+
+#define SEALEVELPRESSURE_HPA (1030)
 
 Adafruit_BME280 bme; // use I2C interface
 Adafruit_Sensor *bme_temp = bme.getTemperatureSensor();
 Adafruit_Sensor *bme_pressure = bme.getPressureSensor();
 Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
-static const constexpr char *TAG = "IMU";
+static const constexpr char *TAG = "BARO";
 
 namespace env_sens {
-
 void setup() {
+
+  baro_mutex = xSemaphoreCreateMutex();
 
   if (!bme.begin()) {
 
     ESP_LOGE(TAG, "Couldn't find a valid sensor");
     return;
   }
-  bme.setSampling(Adafruit_BME280::MODE_NORMAL, Adafruit_BME280::SAMPLING_X2,
-                  Adafruit_BME280::SAMPLING_X2, Adafruit_BME280::SAMPLING_NONE,
-                  Adafruit_BME280::FILTER_OFF,
-                  Adafruit_BME280::STANDBY_MS_62_5);
+  ESP_LOGI(TAG, "BARO SETUP COMPLETE.");
+  bme.setSampling(Adafruit_BME280::MODE_NORMAL, Adafruit_BME280::SAMPLING_X8,
+                  Adafruit_BME280::SAMPLING_X8, Adafruit_BME280::SAMPLING_NONE,
+                  Adafruit_BME280::FILTER_OFF, Adafruit_BME280::STANDBY_MS_10);
 
   bme_temp->printSensorDetails();
   bme_pressure->printSensorDetails();
@@ -33,20 +38,23 @@ void setup() {
 
 float get_temperature() {
   sensors_event_t temp_event;
+
   bme_temp->getEvent(&temp_event);
   return temp_event.temperature;
 }
 
 float get_pressure() {
   sensors_event_t e;
+
   bme_pressure->getEvent(&e);
+
   return e.pressure;
 }
 
 float calculateAltitude(float pressure, float seaLevelPressure,
                         float tempCelsius) {
   float altitude =
-      (((pow((seaLevelPressure / pressure), (1.0 / 5.257))) - 1.0) *
+      (((std::pow((seaLevelPressure / pressure), (1.0 / 5.257))) - 1.0) *
        (tempCelsius + 273.15)) /
       0.0065;
   return altitude;
@@ -60,6 +68,49 @@ float get_altitude() {
 void dbg_sens() {
   ESP_LOGI(TAG, "T (ºC): %f, P (hPa): %f, Alt (m): %f", get_temperature(),
            get_pressure(), get_altitude());
+}
+
+void baro_poll_task(void *_) {
+  env_sens::setup();
+
+  float last_alt = env_sens::get_altitude();
+  uint32_t last_time = xTaskGetTickCount();
+
+  float filtered_alt = last_alt;
+  const float alt_lpf = 0.1f;
+
+  while (true) {
+    uint32_t now = xTaskGetTickCount();
+    float dt = (now - last_time) * portTICK_PERIOD_MS / 1000.0f;
+
+    if (dt > 0.001f) { // Prevent division by zero
+      float current_alt = env_sens::get_altitude();
+
+      filtered_alt = (alt_lpf * current_alt) + (1.0f - alt_lpf) * filtered_alt;
+
+      float v_z = (filtered_alt - last_alt) / dt;
+
+      if (nav_mutex && xSemaphoreTake(nav_mutex, (TickType_t)20) == pdTRUE) {
+
+        Eigen::Vector3f baro_pos = nav_filter.position;
+        baro_pos.z() = filtered_alt;
+
+        Eigen::Vector3f baro_vel = nav_filter.velocity;
+        baro_vel.z() = v_z;
+
+        // Update the filter with Baro data
+        nav_filter.measure_baro(dt, baro_pos, baro_vel);
+
+        xSemaphoreGive(nav_mutex);
+      }
+
+      last_alt = filtered_alt;
+      last_time = now;
+    }
+
+    // BME280 in your config has a 10ms standby, so 20ms-50ms poll is ideal
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
 }
 
 } // namespace env_sens

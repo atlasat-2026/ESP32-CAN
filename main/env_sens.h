@@ -1,5 +1,6 @@
 #pragma once
 
+#include "freertos/idf_additions.h"
 namespace env_sens {
 
 void setup();
@@ -11,5 +12,8 @@ float get_pressure();
 void dbg_sens();
 
 float get_altitude();
+void baro_poll_task(void *_);
 
 } // namespace env_sens
+
+inline SemaphoreHandle_t baro_mutex = NULL;

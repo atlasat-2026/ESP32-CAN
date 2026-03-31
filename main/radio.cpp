@@ -1,4 +1,5 @@
 #include "radio.h"
+#include "Esp.h"
 #include "esp32-hal-gpio.h"
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
@@ -19,25 +20,25 @@
 
 #define FREQUENCY RF69_433MHZ
 #define NODEID 1
+#define GROUNDID 99
 #define NETWORKID 100
 
 static const char *TAG = "RADIO_TASK";
 
 #define PACKET_QUEUE_CAP 10
 
-void radio_rx_task(void *pvParameters) {
+void radio_task(void *pvParameters) {
   ESP_LOGI(TAG, "Radio Task Started on Core %d", xPortGetCoreID());
-  packet_queue = xQueueCreate(PACKET_QUEUE_CAP, MAX_PACKET_SIZE);
+  packet_rx_queue = xQueueCreate(PACKET_QUEUE_CAP, MAX_PACKET_SIZE);
+  packet_tx_queue = xQueueCreate(PACKET_QUEUE_CAP, MAX_PACKET_SIZE);
   controller_input_semaphore = xSemaphoreCreateMutex();
 
   pinMode(RFM69_CS, OUTPUT);
   pinMode(RFM69_INT, INPUT);
 
-  // 1. Setup SPI for this task
   SPIClass vspi(VSPI);
   vspi.begin(SPI_SCLK, SPI_MISO, SPI_MOSI, 34);
 
-  // 3. Hardware Reset
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, HIGH);
   vTaskDelay(pdMS_TO_TICKS(10));
@@ -50,11 +51,10 @@ void radio_rx_task(void *pvParameters) {
     radio.setHighPower(true);
     ESP_LOGI(TAG, "Radio Initialized. Version: 0x%02X", radio.readReg(0x10));
   } else {
-    ESP_LOGE(TAG, "Radio Init FAILED! Deleting Task.");
-    vTaskDelete(NULL);
+    ESP_LOGE(TAG, "Radio Init FAILED! Restarting.");
+    ESP.restart();
   }
 
-  // 4. Polling Loop
   while (1) {
     if (radio.receiveDone()) {
       // ESP_LOGD(TAG, "Packet [ID:%d] RSSI:%d LEN:%d", radio.SENDERID,
@@ -67,8 +67,8 @@ void radio_rx_task(void *pvParameters) {
       PACKET_TYPE packet_type = *((PACKET_TYPE *)&packet_data[0]);
       if (packet_type == CONTROLLER_INPUT) {
 
-        controller_input *inp =
-            (controller_input *)(&packet_data[0] + sizeof(PACKET_TYPE));
+        packet_controller_input *inp =
+            (packet_controller_input *)(&packet_data[0] + sizeof(PACKET_TYPE));
 
         if (xSemaphoreTake(controller_input_semaphore, (TickType_t)50) ==
             pdTRUE) {
@@ -77,16 +77,18 @@ void radio_rx_task(void *pvParameters) {
         }
 
       } else {
-        xQueueSend(packet_queue, &packet_data, portMAX_DELAY);
+        xQueueSend(packet_rx_queue, &packet_data[0], portMAX_DELAY);
       }
 
       if (radio.ACKRequested()) {
         radio.sendACK();
       }
     }
+    if (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
+      PACKET_TYPE packet_type = *((PACKET_TYPE *)&packet_data[0]);
+      radio.send(GROUNDID, &packet_data[0], get_packet_size(packet_type));
+    }
 
-    // Small delay to prevent Watchdog trigger and allow other tasks to run
-    // 1ms is usually enough for high-speed polling
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }

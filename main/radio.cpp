@@ -27,6 +27,12 @@ static const char *TAG = "RADIO_TASK";
 
 #define PACKET_QUEUE_CAP 10
 
+static bool is_pending_switch = false;
+static uint32_t target_bitrate = 0;
+static uint32_t switch_at_ms = 0;
+static uint32_t rollback_at_ms = 0;
+static bool confirmed_at_new_rate = false;
+
 void radio_task(void *pvParameters) {
   ESP_LOGI(TAG, "Radio Task Started on Core %d", xPortGetCoreID());
   packet_rx_queue = xQueueCreate(PACKET_QUEUE_CAP, MAX_PACKET_SIZE);
@@ -49,6 +55,7 @@ void radio_task(void *pvParameters) {
 
   if (radio.initialize(FREQUENCY, NODEID, NETWORKID)) {
     radio.setHighPower(true);
+    radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
     ESP_LOGI(TAG, "Radio Initialized. Version: 0x%02X", radio.readReg(0x10));
   } else {
     ESP_LOGE(TAG, "Radio Init FAILED! Restarting.");
@@ -56,26 +63,36 @@ void radio_task(void *pvParameters) {
   }
 
   while (1) {
+    uint32_t now = millis();
+
     if (radio.receiveDone()) {
-      // ESP_LOGD(TAG, "Packet [ID:%d] RSSI:%d LEN:%d", radio.SENDERID,
-      // radio.RSSI,
-      //          radio.DATALEN);
+
+      // If we receive ANY valid packet while in probation, confirm the switch
+      // (Bit-rate switching)
+      if (is_pending_switch && now > switch_at_ms) {
+        confirmed_at_new_rate = true;
+        ESP_LOGI(TAG, "New bitrate confirmed by valid packet.");
+      }
+
+      ESP_LOGD(TAG, "Packet [ID:%d] RSSI:%d LEN:%d", radio.SENDERID, radio.RSSI,
+               radio.DATALEN);
 
       memset(packet_data, '\0', sizeof(packet_data));
       memcpy(packet_data, radio.DATA, radio.DATALEN);
 
       PACKET_TYPE packet_type = *((PACKET_TYPE *)&packet_data[0]);
-      if (packet_type == CONTROLLER_INPUT) {
+      if (packet_type == COMMAND_CHANGE_DATARATE) {
+        packet_command_datarate *cmd =
+            (packet_command_datarate *)(&packet_data[0] + sizeof(PACKET_TYPE));
+        target_bitrate = cmd->target_bitrate;
 
-        packet_controller_input *inp =
-            (packet_controller_input *)(&packet_data[0] + sizeof(PACKET_TYPE));
+        switch_at_ms = now + cmd->ms_delay;
+        rollback_at_ms = now + cmd->ms_rollback;
+        is_pending_switch = true;
+        confirmed_at_new_rate = false;
 
-        if (xSemaphoreTake(controller_input_semaphore, (TickType_t)50) ==
-            pdTRUE) {
-          current_controller_input = *inp;
-          xSemaphoreGive(controller_input_semaphore);
-        }
-
+        ESP_LOGI(TAG, "Datarate change requested: %d. Switching in 100ms...",
+                 target_bitrate);
       } else {
         xQueueSend(packet_rx_queue, &packet_data[0], portMAX_DELAY);
       }
@@ -84,9 +101,34 @@ void radio_task(void *pvParameters) {
         radio.sendACK();
       }
     }
+
+    // Send packets that were queued up for sending
     if (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
       PACKET_TYPE packet_type = *((PACKET_TYPE *)&packet_data[0]);
       radio.send(GROUNDID, &packet_data[0], get_packet_size(packet_type));
+    }
+
+    // --- STATE MACHINE FOR BITRATE SWITCHING ---
+
+    // 1. Execute the Switch
+    if (is_pending_switch && now >= switch_at_ms && !confirmed_at_new_rate) {
+      // We only want to trigger the register write once
+      radio.setCustomBitrate(target_bitrate);
+      switch_at_ms = 0xFFFFFFFF; // Prevent re-triggering
+    }
+
+    // 2. The Rollback (The Fail-safe)
+    if (is_pending_switch && !confirmed_at_new_rate && now > rollback_at_ms) {
+      ESP_LOGE(TAG,
+               "ROLLBACK: No confirmation at new rate. Reverting to default.");
+      radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
+      is_pending_switch = false;
+    }
+
+    // 3. Clear pending flag once confirmed
+    if (confirmed_at_new_rate) {
+      is_pending_switch = false;
+      confirmed_at_new_rate = false;
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));

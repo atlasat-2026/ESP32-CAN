@@ -1,20 +1,26 @@
 
 #include "driver/gpio.h"
 #include "drone_comms.h"
+#include "esp32-hal.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
-#include "imu.h"
 #include <Arduino.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "env_sens.h"
 #include "gps.h"
 #include "nav.h"
 #include "radio.h"
 
+#include "imu.h"
+
 static const char *TAG = "MAIN";
+
+void handle_packet(uint8_t *packet_addr);
 
 extern "C" void app_main(void) {
 
@@ -26,18 +32,18 @@ extern "C" void app_main(void) {
   static imu_state imu_state;
   auto _ = setup_imu(&imu_state);
 
-  // xTaskCreatePinnedToCore(radio_rx_task, // Function name
-  //                         "radio_rx",    // Name for debugging
-  //                         4096,          // Stack size in bytes
-  //                         NULL,          // Parameters
-  //                         1,             // Priority (higher = more urgent)
-  //                         NULL,          // Task handle
-  //                         1              // Core ID
-  // );
-  //
+  xTaskCreatePinnedToCore(radio_task,   // Function name
+                          "radio_rxtx", // Name for debugging
+                          4096,         // Stack size in bytes
+                          NULL,         // Parameters
+                          5,            // Priority (higher = more urgent)
+                          NULL,         // Task handle
+                          1             // Core ID
+  );
+
   xTaskCreate(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 1, NULL);
 
-  xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 1, NULL);
+  xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL);
 
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
@@ -45,15 +51,9 @@ extern "C" void app_main(void) {
   Eigen::Vector3f local_vel = {0, 0, 0};
   bool nav_data_ready = false;
   while (true) {
-    // if (controller_input_semaphore &&
-    //     xSemaphoreTake(controller_input_semaphore, (TickType_t)30) == pdTRUE)
-    //     {
-    //   inp = current_controller_input;
-    //   xSemaphoreGive(controller_input_semaphore);
-    //
-    //   ESP_LOGI(TAG, "CONT INPUT: (%f, %f), (%f,%f)", inp.lx, inp.ly, inp.rx,
-    //            inp.ry);
-    // }
+    if (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
+      handle_packet(&packet_data[0]);
+    }
 
     if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
       if (gps->gps_avaliable()) {
@@ -88,5 +88,44 @@ extern "C" void app_main(void) {
     }
 
     vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
+
+void handle_packet(uint8_t *packet_addr) {
+  PACKET_TYPE packet_type = *((PACKET_TYPE *)packet_addr);
+
+  if (packet_type == PACKET_TYPE::COMMAND_REQUEST) {
+
+    packet_command_request *packet =
+        (packet_command_request *)(packet_addr + sizeof(PACKET_TYPE));
+    PACKET_TYPE requested_type = packet->packet_requested;
+    std::pair<uint8_t *, size_t> resp_packet = {nullptr, 0};
+
+    if (requested_type == PACKET_TYPE::INFO_DRONE_POSITION) {
+      resp_packet = create_packet_pooled(
+          PACKET_TYPE::INFO_DRONE_POSITION,
+          packet_info_drone_position{
+              {nav_filter.position.x(), nav_filter.position.y(),
+               nav_filter.position.z()},
+              {nav_filter.velocity.x(), nav_filter.velocity.y(),
+               nav_filter.velocity.z()},
+              {0.0, 0.0, 0.0}});
+    }
+
+    if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {
+
+      if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
+
+        resp_packet = create_packet_pooled(
+            PACKET_TYPE::INFO_DRONE_STATUS,
+            packet_info_drone_status{
+                {gps->origin_long, gps->origin_lat}, millis(), 0});
+        xSemaphoreGive(gps_mutex);
+      }
+    }
+
+    if (resp_packet.first != nullptr) {
+      xQueueSend(packet_tx_queue, resp_packet.first, portMAX_DELAY);
+    }
   }
 }

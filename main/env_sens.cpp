@@ -90,14 +90,13 @@ void baro_poll_task(void *_) {
 
       float v_z = (filtered_alt - last_alt) / dt;
 
+      Eigen::Vector3f baro_pos = sens_fus.position;
+      baro_pos.z() = filtered_alt;
+
+      Eigen::Vector3f baro_vel = sens_fus.velocity;
+      baro_vel.z() = v_z;
       if (sens_fus_mutex &&
           xSemaphoreTake(sens_fus_mutex, (TickType_t)20) == pdTRUE) {
-
-        Eigen::Vector3f baro_pos = sens_fus.position;
-        baro_pos.z() = filtered_alt;
-
-        Eigen::Vector3f baro_vel = sens_fus.velocity;
-        baro_vel.z() = v_z;
 
         // Update the filter with Baro data
         sens_fus.measure_baro(dt, baro_pos, baro_vel);

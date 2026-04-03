@@ -1,11 +1,11 @@
 #include "gps.h"
+#include "Eigen/Core"
 #include "esp_log.h"
 #include "sens_fus.h"
 
 static const char *TAG = "GPS_TASK";
 
 void gps_poll_task(void *_) {
-
   gps = new GPS();
   gps->begin();
   gps_mutex = xSemaphoreCreateMutex();
@@ -13,24 +13,36 @@ void gps_poll_task(void *_) {
   ESP_LOGI(TAG, "GPS TASK INIT.");
 
   while (true) {
-    if (xSemaphoreTake(gps_mutex, (TickType_t)1) == pdTRUE) {
+    bool has_new_data = false;
+    Eigen::Vector2f local_vel = Eigen::Vector2f::Zero();
+    std::optional<Eigen::Vector3f> local_coords;
 
-      // ESP_LOGI(TAG, "Polling gps.");
+    if (xSemaphoreTake(gps_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       gps->poll();
-      if (gps->gps_avaliable() && sens_fus_mutex &&
-          xSemaphoreTake(sens_fus_mutex, (TickType_t)2) == pdTRUE) {
-        auto vel = gps->velocity().value_or(Eigen::Vector2f::Zero());
-        auto coords = gps->get_coordinates();
-        if (coords.has_value()) {
-          sens_fus.measure_gps(1.0, gps->get_coordinates().value(),
-                               Eigen::Vector3f(vel.x(), vel.y(), 0.0));
-        }
-        xSemaphoreGive(sens_fus_mutex);
+
+      if (gps->gps_avaliable()) {
+        local_vel = gps->velocity().value_or(Eigen::Vector2f::Zero());
+        local_coords = gps->get_coordinates();
       }
       xSemaphoreGive(gps_mutex);
+
+      has_new_data = local_coords.has_value();
     } else {
       ESP_LOGE(TAG, "FAILED TO GET GPS MUTEX");
     }
-    vTaskDelay(pdMS_TO_TICKS(100));
+
+    if (has_new_data && sens_fus_mutex) {
+      if (xSemaphoreTake(sens_fus_mutex, 50) == pdTRUE) {
+        sens_fus.measure_gps(
+            1.0f, local_coords.value(),
+            Eigen::Vector3f(local_vel.x(), local_vel.y(), 0.0f));
+        xSemaphoreGive(sens_fus_mutex);
+      } else {
+
+        ESP_LOGD(TAG, "Sens_fus busy, skipping GPS update.");
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(50)); // 10Hz polling
   }
 }

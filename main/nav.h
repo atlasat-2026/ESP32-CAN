@@ -17,7 +17,7 @@
 #define WAYPOINT_COUNT 8
 
 struct waypoint {
-  Eigen::Vector3f coords; // long, lat, alt
+  Eigen::Vector3f coords; // lon, lat, alt
   bool active;            // active or to be skipped
 };
 

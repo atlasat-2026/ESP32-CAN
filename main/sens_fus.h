@@ -41,9 +41,17 @@ struct sens_fus_compl {
 
   float tau_yaw = 10.0f; // Yaw remains a scalar
 
+  Eigen::Matrix3f
+      yaw_rotation_matrix; // Pre-compute this when yaw_offset changes
+
+  void update_yaw_matrix() {
+    yaw_rotation_matrix =
+        Eigen::AngleAxisf(this->yaw_offset, Eigen::Vector3f::UnitZ())
+            .toRotationMatrix();
+  }
+
   void predict(float dt, Eigen::Vector3f accel) {
-    Eigen::Vector3f accel_rotated =
-        Eigen::AngleAxisf(this->yaw_offset, Eigen::Vector3f::UnitZ()) * accel;
+    Eigen::Vector3f accel_rotated = yaw_rotation_matrix * accel;
 
     Eigen::Vector3f next_velocity =
         this->velocity + (this->last_accel_world + accel_rotated) * 0.5f * dt;
@@ -72,6 +80,7 @@ struct sens_fus_compl {
 
       this->yaw_offset =
           std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
+      this->update_yaw_matrix();
     }
 
     // res = (1 - alpha) * state + alpha * measurement

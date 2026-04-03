@@ -17,14 +17,15 @@
 
 static const char *TAG = "IMU";
 
-BNO08x *setup_imu(imu_state *state) {
+void setup_imu() {
+  imu_state *local_state = new imu_state;
+
   BNO08x *imu = new BNO08x(
       bno08x_config_t(SPI2_HOST, GPIO_NUM_26, GPIO_NUM_27, GPIO_NUM_25,
                       GPIO_NUM_33, GPIO_NUM_36, GPIO_NUM_32, 2000000, false));
 
   if (!imu->initialize()) {
     ESP_LOGE(TAG, "BNO08x Init failure.");
-    return nullptr;
   }
 
   imu->dynamic_calibration_autosave_enable();
@@ -32,36 +33,61 @@ BNO08x *setup_imu(imu_state *state) {
 
   imu->rpt.rv_game.enable(2500UL);
   imu->rpt.linear_accelerometer.enable(2500UL);
+  imu->rpt.cal_gyro.enable(2500UL);
 
-  imu->register_cb([imu, state]() {
+  imu->register_cb([imu, local_state]() {
+    bool needs_updating = false;
+
     if (imu->rpt.rv_game.has_new_data()) {
+
+      needs_updating = true;
+
       auto sens_rot = imu->rpt.rv_game.get_quat();
-      state->rot = {sens_rot.i, sens_rot.j, sens_rot.k, sens_rot.real};
+      auto sens_euler = imu->rpt.rv_game.get_euler();
+      local_state->rot = {sens_rot.i, sens_rot.j, sens_rot.k, sens_rot.real};
+      local_state->rot_euler = {sens_euler.x, sens_euler.y, sens_euler.z};
+    }
+
+    if (imu->rpt.cal_gyro.has_new_data()) {
+
+      needs_updating = true;
+
+      auto cal_gyro = imu->rpt.cal_gyro.get();
+      local_state->angvel = {cal_gyro.x, cal_gyro.y, cal_gyro.z};
     }
 
     if (imu->rpt.linear_accelerometer.has_new_data()) {
 
-      auto sens_accel = imu->rpt.linear_accelerometer.get();
-      state->accel = {sens_accel.x, sens_accel.y, sens_accel.z};
+      needs_updating = true;
 
+      auto sens_accel = imu->rpt.linear_accelerometer.get();
+      local_state->accel = {sens_accel.x, sens_accel.y, sens_accel.z};
       int64_t current_time = esp_timer_get_time();
 
-      if (state->last_time != -1) {
-        float dt = ((float)(current_time - state->last_time)) / 1000000.0f;
-        Vec3C accel_global = apply_rot(&state->accel, &state->rot);
+      if (local_state->last_time != -1) {
+
+        float dt =
+            ((float)(current_time - local_state->last_time)) / 1000000.0f;
+        Vec3C accel_global = apply_rot(&local_state->accel, &local_state->rot);
 
         if (xSemaphoreTake(sens_fus_mutex, (TickType_t)2) == pdTRUE) {
           sens_fus.predict(dt, Eigen::Vector3f(accel_global.x, accel_global.y,
                                                accel_global.z));
           xSemaphoreGive(sens_fus_mutex);
         } else {
-          ESP_LOGE(TAG, "Failed to get mutex.");
+          ESP_LOGE(TAG, "Failed to get sens_fus mutex.");
         }
       }
-      state->last_time = current_time;
+      local_state->last_time = current_time;
+    }
+
+    if (needs_updating) {
+      if (xSemaphoreTake(imu_state_mutex, 2)) {
+        imu_state_var = *local_state;
+        xSemaphoreGive(imu_state_mutex);
+      }
     }
   });
 
   ESP_LOGI(TAG, "IMU Setup Success.");
-  return imu;
 }

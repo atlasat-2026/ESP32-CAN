@@ -3,7 +3,7 @@
 #include "esp_timer.h"
 #include "freertos/idf_additions.h"
 #include "hal/spi_types.h"
-#include "nav.h"
+#include "sens_fus.h"
 
 #ifdef PS
 #undef PS
@@ -50,10 +50,10 @@ BNO08x *setup_imu(imu_state *state) {
         float dt = ((float)(current_time - state->last_time)) / 1000000.0f;
         Vec3C accel_global = apply_rot(&state->accel, &state->rot);
 
-        if (xSemaphoreTake(nav_mutex, (TickType_t)2) == pdTRUE) {
-          nav_filter.predict(dt, Eigen::Vector3f(accel_global.x, accel_global.y,
-                                                 accel_global.z));
-          xSemaphoreGive(nav_mutex);
+        if (xSemaphoreTake(sens_fus_mutex, (TickType_t)2) == pdTRUE) {
+          sens_fus.predict(dt, Eigen::Vector3f(accel_global.x, accel_global.y,
+                                               accel_global.z));
+          xSemaphoreGive(sens_fus_mutex);
         } else {
           ESP_LOGE(TAG, "Failed to get mutex.");
         }

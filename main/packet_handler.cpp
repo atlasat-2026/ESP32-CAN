@@ -1,0 +1,134 @@
+#include "packet_handler.h"
+
+#include "Eigen/Core"
+#include "drone_comms.h"
+#include "freertos/idf_additions.h"
+#include "gps.h"
+#include "nav.h"
+#include "portmacro.h"
+#include "radio.h"
+#include "sens_fus.h"
+#include <cstdint>
+
+#ifdef PS
+#undef PS
+#endif
+
+#ifdef F
+#undef F
+#endif
+
+#include <Eigen/Dense>
+
+void handle_request(uint8_t *packet_addr);
+
+void handle_waypoint_update(uint8_t *packet_addr, uint8_t index);
+void handle_nav_update(uint8_t *packet_addr);
+
+void handle_packet(uint8_t *packet_addr) {
+  PACKET_TYPE packet_type = *((PACKET_TYPE *)packet_addr);
+  if (packet_type == PACKET_TYPE::COMMAND_REQUEST) {
+    handle_request(packet_addr);
+  }
+
+  // NAV SETTERS
+  if (packet_type >= PACKET_TYPE::DRONE_NAV_WAYPOINT_0 &&
+      packet_type <= PACKET_TYPE::DRONE_NAV_WAYPOINT_7) {
+    uint8_t index = packet_type - PACKET_TYPE::DRONE_NAV_WAYPOINT_0;
+    handle_waypoint_update(packet_addr, index);
+  }
+  if (packet_type == PACKET_TYPE::DRONE_NAV) {
+    handle_nav_update(packet_addr);
+  }
+}
+
+void handle_waypoint_update(uint8_t *packet_addr, uint8_t index) {
+  packet_drone_nav_waypoint *packet =
+      (packet_drone_nav_waypoint *)(packet_addr + sizeof(PACKET_TYPE));
+  float lon, lat, alt;
+  lon = packet->coord[0];
+  lat = packet->coord[1];
+  alt = packet->coord[2];
+  Eigen::Vector3f coords(lon, lat, alt);
+
+  if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
+    nav_man.waypoints[index].coords = coords;
+    xSemaphoreGive(nav_mutex);
+  }
+}
+
+void handle_nav_update(uint8_t *packet_addr) {
+  packet_drone_nav *packet =
+      (packet_drone_nav *)(packet_addr + sizeof(PACKET_TYPE));
+
+  if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
+    nav_man.set_active_mask(packet->active_mask);
+    nav_man.current_waypoint = packet->current_waypoint;
+  }
+}
+
+void handle_request(uint8_t *packet_addr) {
+
+  packet_command_request *packet =
+      (packet_command_request *)(packet_addr + sizeof(PACKET_TYPE));
+  PACKET_TYPE requested_type = packet->packet_requested;
+  std::pair<uint8_t *, size_t> resp_packet = {nullptr, 0};
+
+  if (requested_type == PACKET_TYPE::INFO_DRONE_POSITION) {
+    // TODO: send pitch, roll, yaw
+    resp_packet =
+        create_packet_pooled(PACKET_TYPE::INFO_DRONE_POSITION,
+                             packet_info_drone_position{
+                                 {sens_fus.position.x(), sens_fus.position.y(),
+                                  sens_fus.position.z()},
+                                 {sens_fus.velocity.x(), sens_fus.velocity.y(),
+                                  sens_fus.velocity.z()},
+                                 {0.0, 0.0, 0.0}});
+  }
+
+  if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {
+
+    if (gps_mutex && xSemaphoreTake(gps_mutex, portMAX_DELAY) == pdTRUE) {
+
+      // TODO: Absolute time from GPS instead of 0
+      resp_packet = create_packet_pooled(
+          PACKET_TYPE::INFO_DRONE_STATUS,
+          packet_info_drone_status{
+              {gps->origin_long, gps->origin_lat}, millis(), 0});
+      xSemaphoreGive(gps_mutex);
+    }
+  }
+
+  // Navigation
+  if (requested_type == PACKET_TYPE::DRONE_NAV) {
+
+    uint8_t active_mask, current;
+    if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
+      active_mask = nav_man.get_active_mask();
+      current = nav_man.current_waypoint;
+      xSemaphoreGive(nav_mutex);
+
+      resp_packet = create_packet_pooled(
+          PACKET_TYPE::DRONE_NAV, packet_drone_nav{active_mask, current});
+    }
+  }
+
+  if (requested_type >= PACKET_TYPE::DRONE_NAV_WAYPOINT_0 &&
+      requested_type <= PACKET_TYPE::DRONE_NAV_WAYPOINT_7) {
+    uint8_t index = requested_type - PACKET_TYPE::DRONE_NAV_WAYPOINT_0;
+
+    Eigen::Vector3f coords;
+    if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
+      coords = nav_man.waypoints[index].coords;
+      xSemaphoreGive(nav_mutex);
+    }
+
+    resp_packet = create_packet_pooled(
+        requested_type,
+        packet_drone_nav_waypoint{{coords[0], coords[1], coords[2]}});
+  }
+
+  if (resp_packet.first != nullptr) {
+    xQueueSend(packet_tx_queue, resp_packet.first, portMAX_DELAY);
+  }
+}

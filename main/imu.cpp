@@ -68,7 +68,8 @@ void setup_imu() {
 
         float dt =
             ((float)(current_time - local_state->last_time)) / 1000000.0f;
-        Vec3C accel_global = apply_rot(&local_state->accel, &local_state->rot);
+        dcont::Vec3C accel_global =
+            dcont::apply_rot(&local_state->accel, &local_state->rot);
 
         if (xSemaphoreTake(sens_fus_mutex, (TickType_t)2) == pdTRUE) {
           sens_fus.predict(dt, Eigen::Vector3f(accel_global.x, accel_global.y,

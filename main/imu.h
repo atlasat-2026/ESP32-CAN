@@ -25,8 +25,8 @@
 #include <Eigen/Dense>
 
 struct imu_state {
-  Vec3C accel = {0, 0, 0};
-  QuatC rot = {0, 0, 0, 1};
+  dcont::Vec3C accel = {0, 0, 0};
+  dcont::QuatC rot = {0, 0, 0, 1};
   int64_t last_time = -1;
   Eigen::Vector3f angvel;
   Eigen::Vector3f rot_euler;

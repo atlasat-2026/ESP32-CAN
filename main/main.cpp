@@ -1,5 +1,7 @@
 
+#include "Eigen/Core"
 #include "driver/gpio.h"
+#include "drone.h"
 #include "drone_comms.h"
 #include "esp32-hal.h"
 #include "esp_log.h"
@@ -10,6 +12,7 @@
 #include <Arduino.h>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include "env_sens.h"
 #include "gps.h"
@@ -30,8 +33,7 @@ extern "C" void app_main(void) {
   gpio_install_isr_service(0);
   Serial.begin(115200);
 
-  static imu_state imu_state;
-  auto _ = setup_imu(&imu_state);
+  setup_imu();
 
   xTaskCreatePinnedToCore(radio_task,   // Function name
                           "radio_rxtx", // Name for debugging
@@ -40,6 +42,15 @@ extern "C" void app_main(void) {
                           5,            // Priority (higher = more urgent)
                           NULL,         // Task handle
                           0             // Core ID
+  );
+
+  xTaskCreatePinnedToCore(drone_controller_task,   // Function name
+                          "drone_controller_task", // Name for debugging
+                          1024 * 32,               // Stack size in bytes
+                          NULL,                    // Parameters
+                          20,   // Priority (higher = more urgent)
+                          NULL, // Task handle
+                          1     // Core ID
   );
 
   xTaskCreate(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 1, NULL);
@@ -52,25 +63,28 @@ extern "C" void app_main(void) {
   Eigen::Vector3f local_vel = {0, 0, 0};
   bool nav_data_ready = false;
   while (true) {
-    if (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
+    while (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
       handle_packet(&packet_data[0]);
     }
 
+    std::optional<Eigen::Vector3f> coords;
+    float lat, lon, alt;
     if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
       if (gps->gps_avaliable()) {
-        ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f",
-                 gps->gps->latitudeDegrees, gps->gps->longitudeDegrees,
-                 gps->gps->altitude);
-
-        auto D_pos_cond = gps->get_coordinates();
-        if (D_pos_cond.has_value()) {
-          auto D_pos = D_pos_cond.value();
-
-          ESP_LOGI(TAG, "    -> D(pos): (%f, %f, %f)", D_pos[0], D_pos[1],
-                   D_pos[2]);
-        }
+        coords = gps->get_coordinates();
+        lat = gps->gps->latitudeDegrees;
+        lon = gps->gps->longitudeDegrees;
+        alt = gps->gps->altitude;
       }
       xSemaphoreGive(gps_mutex);
+
+      if (coords.has_value()) {
+        auto D_pos = coords.value();
+
+        ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f", lat, lon, alt);
+        ESP_LOGI(TAG, "    -> D(pos): (%f, %f, %f)", D_pos[0], D_pos[1],
+                 D_pos[2]);
+      }
     }
     env_sens::dbg_sens();
 

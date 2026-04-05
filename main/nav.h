@@ -2,7 +2,10 @@
 
 #include "Eigen/Core"
 #include "freertos/idf_additions.h"
+#include "gps.h"
+#include <cmath>
 #include <cstdint>
+#include <optional>
 
 #ifdef PS
 #undef PS
@@ -17,8 +20,9 @@
 #define WAYPOINT_COUNT 8
 
 struct waypoint {
-  Eigen::Vector3f coords; // lon, lat, alt
-  bool active;            // active or to be skipped
+  Eigen::Vector3f coords; // lat, lon, alt
+  std::optional<Eigen::Vector3f> coords_in_axis = std::nullopt;
+  bool active = false; // active or to be skipped
 };
 
 struct drone_nav {
@@ -39,6 +43,16 @@ struct drone_nav {
       }
     }
     return mask;
+  }
+
+  waypoint get_current_waypoint() {
+    waypoint wayp = this->waypoints[this->current_waypoint];
+    if (!wayp.coords_in_axis.has_value()) {
+      auto axis =
+          gps->waypoint_to_xyz(wayp.coords[0], wayp.coords[1], wayp.coords[2]);
+      wayp.coords_in_axis = axis;
+    }
+    return wayp;
   }
 };
 

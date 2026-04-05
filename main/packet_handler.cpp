@@ -1,7 +1,10 @@
 #include "packet_handler.h"
 
 #include "Eigen/Core"
+#include "drone.h"
 #include "drone_comms.h"
+#include "drone_controller.h"
+#include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include "gps.h"
 #include "nav.h"
@@ -32,13 +35,38 @@ void handle_packet(uint8_t *packet_addr) {
   }
 
   // NAV SETTERS
-  if (packet_type >= PACKET_TYPE::DRONE_NAV_WAYPOINT_0 &&
-      packet_type <= PACKET_TYPE::DRONE_NAV_WAYPOINT_7) {
+  else if (packet_type >= PACKET_TYPE::DRONE_NAV_WAYPOINT_0 &&
+           packet_type <= PACKET_TYPE::DRONE_NAV_WAYPOINT_7) {
     uint8_t index = packet_type - PACKET_TYPE::DRONE_NAV_WAYPOINT_0;
     handle_waypoint_update(packet_addr, index);
-  }
-  if (packet_type == PACKET_TYPE::DRONE_NAV) {
+  } else if (packet_type == PACKET_TYPE::DRONE_NAV) {
     handle_nav_update(packet_addr);
+  } else if (packet_type == PACKET_TYPE::KILLSWITCH_TOGGLE) {
+    packet_killswitch_toggle *packet =
+        (packet_killswitch_toggle *)(packet_addr + sizeof(PACKET_TYPE));
+    killswitch_active = packet->killswitch_active;
+  } else if (packet_type == PACKET_TYPE::MODE_INPUT) {
+    packet_mode_input *packet =
+        (packet_mode_input *)(packet_addr + sizeof(PACKET_TYPE));
+    switch (packet->input_type) {
+    case INPUT_TYPE::ACRO:
+      current_input_mode = dcont::ModeInput::Acro;
+      break;
+    case INPUT_TYPE::LEVEL:
+    case INPUT_TYPE::STABILIZE_FALL:
+      ESP_LOGE("PACKET_HANDLER",
+               "INPUT TYPES NOT IMPLEMENTED. DEFAULTING TO POSITION (AUTONAV)");
+    case INPUT_TYPE::AUTO_NAV:
+      current_input_mode = dcont::ModeInput::Position;
+    }
+  } else if (packet_type == PACKET_TYPE::CONTROLLER_INPUT) {
+    packet_controller_input *packet =
+        (packet_controller_input *)(packet_addr + sizeof(PACKET_TYPE));
+
+    if (xSemaphoreTake(controller_input_semaphore, 10)) {
+      current_controller_input = *packet;
+      xSemaphoreGive(controller_input_semaphore);
+    }
   }
 }
 

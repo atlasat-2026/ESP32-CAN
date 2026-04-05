@@ -22,3 +22,8 @@ inline dcont::StackedController *drone_controller = nullptr;
 inline dcont::ModeInput current_input_mode;
 
 void drone_controller_task(void *params);
+
+void motor_throttles_task(void *params);
+
+inline float motor_throttles[4];
+inline bool killswitch_active;

@@ -19,7 +19,6 @@
 
 const float TO_RAD = M_PI / 180.0f;
 const float KNOTS_TO_M_SEC = 0.5144444f;
-
 const float earth_radius = 6371000.0f;
 
 struct GPS {
@@ -73,8 +72,8 @@ struct GPS {
   }
 
   std::optional<Eigen::Vector3f> get_coordinates() {
-    if (this->gps->fix == false || this->gps->latitudeDegrees == 0.0 ||
-        this->gps->longitudeDegrees != 0.0) {
+    if (this->gps->fix == false || (this->gps->latitudeDegrees == 0.0 &&
+                                    this->gps->longitudeDegrees == 0.0)) {
       return std::nullopt;
     }
     float latitude = this->gps->latitudeDegrees;

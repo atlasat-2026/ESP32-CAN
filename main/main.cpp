@@ -44,6 +44,10 @@ extern "C" void app_main(void) {
                           0             // Core ID
   );
 
+  xTaskCreate(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 1, NULL);
+
+  xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL);
+
   xTaskCreatePinnedToCore(drone_controller_task,   // Function name
                           "drone_controller_task", // Name for debugging
                           1024 * 32,               // Stack size in bytes
@@ -53,56 +57,66 @@ extern "C" void app_main(void) {
                           1     // Core ID
   );
 
-  xTaskCreate(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 1, NULL);
-
-  xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL);
+  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
+                          "motor_throttles_task", // Name for debugging
+                          1024 * 4,               // Stack size in bytes
+                          NULL,                   // Parameters
+                          20,   // Priority (higher = more urgent)
+                          NULL, // Task handle
+                          1     // Core ID
+  );
 
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};
   bool nav_data_ready = false;
+
+  uint64_t last_print_time = 0;
   while (true) {
     while (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
       handle_packet(&packet_data[0]);
     }
 
-    std::optional<Eigen::Vector3f> coords;
-    float lat, lon, alt;
-    if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
-      if (gps->gps_avaliable()) {
-        coords = gps->get_coordinates();
-        lat = gps->gps->latitudeDegrees;
-        lon = gps->gps->longitudeDegrees;
-        alt = gps->gps->altitude;
+    if (millis() > last_print_time + 1000) {
+
+      std::optional<Eigen::Vector3f> coords;
+      float lat, lon, alt;
+      if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
+        if (gps->gps_avaliable()) {
+          coords = gps->get_coordinates();
+          lat = gps->gps->latitudeDegrees;
+          lon = gps->gps->longitudeDegrees;
+          alt = gps->gps->altitude;
+        }
+        xSemaphoreGive(gps_mutex);
+
+        if (coords.has_value()) {
+          auto D_pos = coords.value();
+
+          ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f", lat, lon, alt);
+          ESP_LOGI(TAG, "    -> D(pos): (%f, %f, %f)", D_pos[0], D_pos[1],
+                   D_pos[2]);
+        }
       }
-      xSemaphoreGive(gps_mutex);
+      env_sens::dbg_sens();
 
-      if (coords.has_value()) {
-        auto D_pos = coords.value();
+      if (sens_fus_mutex &&
+          xSemaphoreTake(sens_fus_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        local_pos = sens_fus.position;
+        local_vel = sens_fus.velocity;
+        nav_data_ready = true;
+        xSemaphoreGive(sens_fus_mutex);
+      }
 
-        ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f", lat, lon, alt);
-        ESP_LOGI(TAG, "    -> D(pos): (%f, %f, %f)", D_pos[0], D_pos[1],
-                 D_pos[2]);
+      if (nav_data_ready) {
+        ESP_LOGI(TAG, "nav(pos): (%f, %f, %f)", local_pos[0], local_pos[1],
+                 local_pos[2]);
+        ESP_LOGI(TAG, "nav(vel): (%f, %f, %f)", local_vel[0], local_vel[1],
+                 local_vel[2]);
       }
     }
-    env_sens::dbg_sens();
 
-    if (sens_fus_mutex &&
-        xSemaphoreTake(sens_fus_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      local_pos = sens_fus.position;
-      local_vel = sens_fus.velocity;
-      nav_data_ready = true;
-      xSemaphoreGive(sens_fus_mutex);
-    }
-
-    if (nav_data_ready) {
-      ESP_LOGI(TAG, "nav(pos): (%f, %f, %f)", local_pos[0], local_pos[1],
-               local_pos[2]);
-      ESP_LOGI(TAG, "nav(vel): (%f, %f, %f)", local_vel[0], local_vel[1],
-               local_vel[2]);
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }

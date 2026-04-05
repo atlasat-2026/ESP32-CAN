@@ -33,7 +33,7 @@ void setup_imu() {
 
   imu->rpt.rv_game.enable(2500UL);
   imu->rpt.linear_accelerometer.enable(2500UL);
-  imu->rpt.cal_gyro.enable(2500UL);
+  imu->rpt.cal_gyro.enable(1000UL);
 
   imu->register_cb([imu, local_state]() {
     bool needs_updating = false;

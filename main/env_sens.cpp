@@ -4,6 +4,16 @@
 #include <SPI.h>
 #include <Wire.h>
 
+#ifdef PS
+#undef PS
+#endif
+
+#ifdef F
+#undef F
+#endif
+
+#include <Eigen/Dense>
+
 #include "freertos/idf_additions.h"
 #include "sens_fus.h"
 

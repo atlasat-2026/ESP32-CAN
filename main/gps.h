@@ -83,15 +83,12 @@ struct GPS {
   }
 
   void poll() {
-    while (this->gps->read()) {
-      if (this->gps->newNMEAreceived()) {
-        char *line = this->gps->lastNMEA();
-        // ESP_LOGI("GPS", "NMEA LINE: %s", line);
-        if (!this->gps->parse(line)) {
-          continue;
-        }
-      }
-    }
+    // char c = this->gps->read();
+    // if (this->gps->newNMEAreceived()) {
+    //   char *line = this->gps->lastNMEA();
+    //   ESP_LOGI("GPS", "NMEA LINE: %s", line);
+    //   this->gps->parse(line);
+    // }
   }
 };
 

@@ -1,9 +1,20 @@
 #include "radio.h"
+
+#ifdef PS
+#undef PS
+#endif
+
+#ifdef F
+#undef F
+#endif
+
+#include <Eigen/Dense>
+
 #include "Esp.h"
 #include "esp32-hal-gpio.h"
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
-#include <Arduino.h>
+#include "packet_handler.h"
 #include <RFM69.h>
 #include <SPI.h>
 #include <cstdint>

@@ -94,11 +94,11 @@ void drone_controller_task(void *params) {
   Eigen::Vector3f velocity_local = Eigen::Vector3f::Zero();
 
   while (true) {
-    if (xSemaphoreTake(imu_state_mutex, 1)) {
+    if (imu_state_mutex && xSemaphoreTake(imu_state_mutex, 1)) {
       imu_state_local = imu_state_var;
       xSemaphoreGive(imu_state_mutex);
     }
-    if (xSemaphoreTake(sens_fus_mutex, 1)) {
+    if (sens_fus_mutex && xSemaphoreTake(sens_fus_mutex, 1)) {
       position_local = sens_fus.position;
       velocity_local = sens_fus.velocity;
       xSemaphoreGive(sens_fus_mutex);
@@ -165,6 +165,7 @@ void motor_throttles_task(void *params) {
     }
   }
 
+  uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;
   while (true) {
     for (int i = 0; i < 4; i++) {
       if (!killswitch_active) {

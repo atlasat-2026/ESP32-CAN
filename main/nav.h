@@ -1,12 +1,5 @@
 #pragma once
 
-#include "Eigen/Core"
-#include "freertos/idf_additions.h"
-#include "gps.h"
-#include <cmath>
-#include <cstdint>
-#include <optional>
-
 #ifdef PS
 #undef PS
 #endif
@@ -16,6 +9,12 @@
 #endif
 
 #include <Eigen/Dense>
+
+#include "freertos/idf_additions.h"
+#include "gps.h"
+#include <cmath>
+#include <cstdint>
+#include <optional>
 
 #define WAYPOINT_COUNT 8
 

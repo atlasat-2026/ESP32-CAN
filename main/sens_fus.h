@@ -1,5 +1,4 @@
 #pragma once
-#include "freertos/idf_additions.h"
 #include <cmath>
 
 #ifdef PS
@@ -11,6 +10,8 @@
 #endif
 
 #include <Eigen/Dense>
+
+#include "freertos/idf_additions.h"
 
 inline float getYawDifference(const Eigen::Vector3f &v_gps,
                               const Eigen::Vector3f &v_imu) {
@@ -41,8 +42,7 @@ struct sens_fus_compl {
 
   float tau_yaw = 10.0f; // Yaw remains a scalar
 
-  Eigen::Matrix3f
-      yaw_rotation_matrix; // Pre-compute this when yaw_offset changes
+  Eigen::Matrix3f yaw_rotation_matrix;
 
   void update_yaw_matrix() {
     yaw_rotation_matrix =

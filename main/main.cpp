@@ -1,5 +1,14 @@
 
+#ifdef PS
+#undef PS
+#endif
+
+#ifdef F
+#undef F
+#endif
+
 #include "Eigen/Core"
+
 #include "driver/gpio.h"
 #include "drone.h"
 #include "drone_comms.h"
@@ -9,7 +18,6 @@
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
-#include <Arduino.h>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -33,8 +41,6 @@ extern "C" void app_main(void) {
   gpio_install_isr_service(0);
   Serial.begin(115200);
 
-  setup_imu();
-
   xTaskCreatePinnedToCore(radio_task,   // Function name
                           "radio_rxtx", // Name for debugging
                           4096,         // Stack size in bytes
@@ -43,11 +49,11 @@ extern "C" void app_main(void) {
                           NULL,         // Task handle
                           0             // Core ID
   );
-
+  //
   xTaskCreate(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 1, NULL);
-
+  //
   xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL);
-
+  //
   xTaskCreatePinnedToCore(drone_controller_task,   // Function name
                           "drone_controller_task", // Name for debugging
                           1024 * 32,               // Stack size in bytes
@@ -57,16 +63,18 @@ extern "C" void app_main(void) {
                           1     // Core ID
   );
 
-  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
-                          "motor_throttles_task", // Name for debugging
-                          1024 * 4,               // Stack size in bytes
-                          NULL,                   // Parameters
-                          20,   // Priority (higher = more urgent)
-                          NULL, // Task handle
-                          1     // Core ID
-  );
+  // xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
+  //                         "motor_throttles_task", // Name for debugging
+  //                         1024 * 4,               // Stack size in bytes
+  //                         NULL,                   // Parameters
+  //                         30,   // Priority (higher = more urgent)
+  //                         NULL, // Task handle
+  //                         1     // Core ID
+  // );
 
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
+
+  setup_imu();
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};
@@ -74,11 +82,13 @@ extern "C" void app_main(void) {
 
   uint64_t last_print_time = 0;
   while (true) {
-    while (xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
+    while (packet_tx_queue &&
+           xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
       handle_packet(&packet_data[0]);
     }
 
     if (millis() > last_print_time + 1000) {
+      last_print_time = millis();
 
       std::optional<Eigen::Vector3f> coords;
       float lat, lon, alt;

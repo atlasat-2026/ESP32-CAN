@@ -14,6 +14,7 @@ void gps_poll_task(void *_) {
 
   while (true) {
     bool has_new_data = false;
+    bool available = false;
     Eigen::Vector2f local_vel = Eigen::Vector2f::Zero();
     std::optional<Eigen::Vector3f> local_coords;
 
@@ -21,6 +22,7 @@ void gps_poll_task(void *_) {
       gps->poll();
 
       if (gps->gps_avaliable()) {
+        available = true;
         local_vel = gps->velocity().value_or(Eigen::Vector2f::Zero());
         local_coords = gps->get_coordinates();
       }
@@ -31,18 +33,20 @@ void gps_poll_task(void *_) {
       ESP_LOGE(TAG, "FAILED TO GET GPS MUTEX");
     }
 
-    if (has_new_data && sens_fus_mutex) {
+    if (has_new_data && available && sens_fus_mutex) {
       if (xSemaphoreTake(sens_fus_mutex, 50) == pdTRUE) {
         sens_fus.measure_gps(
             1.0f, local_coords.value(),
             Eigen::Vector3f(local_vel.x(), local_vel.y(), 0.0f));
+
+        ESP_LOGI(TAG, "applied gps measure to sens_fus");
         xSemaphoreGive(sens_fus_mutex);
       } else {
 
-        ESP_LOGD(TAG, "Sens_fus busy, skipping GPS update.");
+        ESP_LOGE(TAG, "Sens_fus busy, skipping GPS update.");
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(50)); // 10Hz polling
+    vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz polling
   }
 }

@@ -148,7 +148,7 @@ void drone_controller_task(void *params) {
   }
 }
 
-const gpio_num_t motor_pins[4] = {GPIO_NUM_NC, GPIO_NUM_NC, GPIO_NUM_NC,
+const gpio_num_t motor_pins[4] = {GPIO_NUM_15, GPIO_NUM_NC, GPIO_NUM_NC,
                                   GPIO_NUM_NC};
 
 void motor_throttles_task(void *params) {

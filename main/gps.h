@@ -56,7 +56,12 @@ struct GPS {
   std::optional<Eigen::Vector3f>
   waypoint_to_xyz(float latitude, float longitude, float height) {
     if (this->origin_lat == INFINITY || this->origin_long == INFINITY) {
-      return std::nullopt;
+      if (this->gps_avaliable()) {
+        this->origin_lat = this->gps->latitudeDegrees;
+        this->origin_long = this->gps->longitudeDegrees;
+      } else {
+        return std::nullopt;
+      }
     }
 
     float dLat = (latitude - this->origin_lat) * TO_RAD;
@@ -72,8 +77,7 @@ struct GPS {
   }
 
   std::optional<Eigen::Vector3f> get_coordinates() {
-    if (this->gps->fix == false || (this->gps->latitudeDegrees == 0.0 &&
-                                    this->gps->longitudeDegrees == 0.0)) {
+    if (this->gps->fix == false) {
       return std::nullopt;
     }
     float latitude = this->gps->latitudeDegrees;
@@ -83,12 +87,12 @@ struct GPS {
   }
 
   void poll() {
-    // char c = this->gps->read();
-    // if (this->gps->newNMEAreceived()) {
-    //   char *line = this->gps->lastNMEA();
-    //   ESP_LOGI("GPS", "NMEA LINE: %s", line);
-    //   this->gps->parse(line);
-    // }
+    char c = this->gps->read();
+    if (this->gps->newNMEAreceived()) {
+      char *line = this->gps->lastNMEA();
+      // ESP_LOGI("GPS", "NMEA LINE: %s", line);
+      this->gps->parse(line);
+    }
   }
 };
 

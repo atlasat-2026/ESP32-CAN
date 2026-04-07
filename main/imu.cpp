@@ -1,8 +1,5 @@
 #include "imu.h"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include "hal/spi_types.h"
-#include "sens_fus.h"
+#include "Esp.h"
 
 #ifdef PS
 #undef PS
@@ -13,6 +10,11 @@
 #endif
 
 #include <Eigen/Dense>
+
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "hal/spi_types.h"
+#include "sens_fus.h"
 
 #include "freertos/idf_additions.h"
 
@@ -28,6 +30,7 @@ void setup_imu() {
 
   if (!imu->initialize()) {
     ESP_LOGE(TAG, "BNO08x Init failure.");
+    ESP.restart();
   }
 
   imu->dynamic_calibration_autosave_enable();
@@ -75,16 +78,16 @@ void setup_imu() {
         dcont::Vec3C accel_global =
             dcont::apply_rot(&local_state->accel, &local_state->rot);
 
-        if (xSemaphoreTake(sens_fus_mutex, (TickType_t)0) == pdTRUE) {
+        if (xSemaphoreTake(sens_fus_mutex, (TickType_t)2) == pdTRUE) {
 
-          ESP_LOGE(TAG, "accel: (%f, %f, %f), dt: %f", accel_global.x,
-                   accel_global.y, accel_global.z, dt);
+          // ESP_LOGE(TAG, "accel: (%f, %f, %f), dt: %f", accel_global.x,
+          //          accel_global.y, accel_global.z, dt);
 
           sens_fus.predict(dt, Eigen::Vector3f(accel_global.x, accel_global.y,
                                                accel_global.z));
 
-          ESP_LOGE(TAG, "vel: (%f, %f, %f)", sens_fus.velocity.x(),
-                   sens_fus.velocity.z(), sens_fus.velocity.y());
+          // ESP_LOGE(TAG, "vel: (%f, %f, %f)", sens_fus.velocity.x(),
+          // sens_fus.velocity.z(), sens_fus.velocity.y());
           xSemaphoreGive(sens_fus_mutex);
         } else {
           ESP_LOGE(TAG, "Failed to get sens_fus mutex.");

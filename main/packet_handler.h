@@ -2,17 +2,8 @@
 
 #include <cstdint>
 
-#ifdef PS
-#undef PS
-#endif
-
-#ifdef F
-#undef F
-#endif
-
 #include "drone_comms.h"
 #include "freertos/idf_additions.h"
-#include <Eigen/Dense>
 
 void handle_packet(uint8_t *packet_addr);
 

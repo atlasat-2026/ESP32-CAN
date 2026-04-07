@@ -1,7 +1,9 @@
 #include "gps.h"
-#include "Eigen/Core"
+
+#include "esp32-hal.h"
 #include "esp_log.h"
 #include "sens_fus.h"
+#include <cstdint>
 
 static const char *TAG = "GPS_TASK";
 
@@ -12,6 +14,7 @@ void gps_poll_task(void *_) {
 
   ESP_LOGI(TAG, "GPS TASK INIT.");
 
+  uint64_t last_time = millis();
   while (true) {
     bool has_new_data = false;
     bool available = false;
@@ -34,19 +37,21 @@ void gps_poll_task(void *_) {
     }
 
     if (has_new_data && available && sens_fus_mutex) {
+
+      uint64_t current_time = millis();
       if (xSemaphoreTake(sens_fus_mutex, 50) == pdTRUE) {
         sens_fus.measure_gps(
-            1.0f, local_coords.value(),
+            (current_time - last_time) / 1000.0f, local_coords.value(),
             Eigen::Vector3f(local_vel.x(), local_vel.y(), 0.0f));
 
-        ESP_LOGI(TAG, "applied gps measure to sens_fus");
         xSemaphoreGive(sens_fus_mutex);
+        last_time = current_time;
       } else {
 
         ESP_LOGE(TAG, "Sens_fus busy, skipping GPS update.");
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz polling
+    vTaskDelay(pdMS_TO_TICKS(10)); // 10Hz polling
   }
 }

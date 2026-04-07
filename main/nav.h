@@ -1,15 +1,4 @@
 #pragma once
-
-#ifdef PS
-#undef PS
-#endif
-
-#ifdef F
-#undef F
-#endif
-
-#include <Eigen/Dense>
-
 #include "freertos/idf_additions.h"
 #include "gps.h"
 #include <cmath>

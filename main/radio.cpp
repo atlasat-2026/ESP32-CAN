@@ -1,15 +1,5 @@
 #include "radio.h"
 
-#ifdef PS
-#undef PS
-#endif
-
-#ifdef F
-#undef F
-#endif
-
-#include <Eigen/Dense>
-
 #include "Esp.h"
 #include "esp32-hal-gpio.h"
 #include "esp_log.h"
@@ -68,6 +58,7 @@ void radio_task(void *pvParameters) {
     radio.setHighPower(true);
     radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
     ESP_LOGI(TAG, "Radio Initialized. Version: 0x%02X", radio.readReg(0x10));
+
   } else {
     ESP_LOGE(TAG, "Radio Init FAILED! Restarting.");
     ESP.restart();

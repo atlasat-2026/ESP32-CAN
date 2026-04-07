@@ -1,13 +1,4 @@
-
-#ifdef PS
-#undef PS
-#endif
-
-#ifdef F
-#undef F
-#endif
-
-#include "Eigen/Core"
+#include "packet_handler.h"
 
 #include "drone.h"
 #include "drone_comms.h"
@@ -16,7 +7,6 @@
 #include "freertos/idf_additions.h"
 #include "gps.h"
 #include "nav.h"
-#include "packet_handler.h"
 #include "portmacro.h"
 #include "radio.h"
 #include "sens_fus.h"

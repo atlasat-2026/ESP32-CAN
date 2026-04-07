@@ -1,21 +1,13 @@
 #include "env_sens.h"
+
+#include "sens_fus.h"
+
 #include "esp_log.h"
 #include <Adafruit_BME280.h>
 #include <SPI.h>
 #include <Wire.h>
 
-#ifdef PS
-#undef PS
-#endif
-
-#ifdef F
-#undef F
-#endif
-
-#include <Eigen/Dense>
-
 #include "freertos/idf_additions.h"
-#include "sens_fus.h"
 
 #define SEALEVELPRESSURE_HPA (1030)
 
@@ -34,6 +26,8 @@ void setup() {
   if (!bme.begin()) {
 
     ESP_LOGE(TAG, "Couldn't find a valid sensor");
+
+    ESP.restart();
     return;
   }
   ESP_LOGI(TAG, "BARO SETUP COMPLETE.");

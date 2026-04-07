@@ -1,14 +1,3 @@
-
-#ifdef PS
-#undef PS
-#endif
-
-#ifdef F
-#undef F
-#endif
-
-#include "Eigen/Core"
-
 #include "driver/gpio.h"
 #include "drone.h"
 #include "drone_comms.h"
@@ -17,8 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
-#include "freertos/task.h"
-#include <cstddef>
+#include "freertos/task.h" #include < cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -35,6 +23,7 @@ static const char *TAG = "MAIN";
 extern "C" void app_main(void) {
 
   sens_fus_mutex = xSemaphoreCreateMutex();
+  configASSERT(sens_fus_mutex);
   nav_mutex = xSemaphoreCreateMutex();
 
   initArduino();
@@ -54,23 +43,23 @@ extern "C" void app_main(void) {
   //
   xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL);
   //
-  xTaskCreatePinnedToCore(drone_controller_task,   // Function name
-                          "drone_controller_task", // Name for debugging
-                          1024 * 32,               // Stack size in bytes
-                          NULL,                    // Parameters
-                          20,   // Priority (higher = more urgent)
-                          NULL, // Task handle
-                          1     // Core ID
-  );
-
-  // xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
-  //                         "motor_throttles_task", // Name for debugging
-  //                         1024 * 4,               // Stack size in bytes
-  //                         NULL,                   // Parameters
-  //                         30,   // Priority (higher = more urgent)
+  // xTaskCreatePinnedToCore(drone_controller_task,   // Function name
+  //                         "drone_controller_task", // Name for debugging
+  //                         1024 * 32,               // Stack size in bytes
+  //                         NULL,                    // Parameters
+  //                         20,   // Priority (higher = more urgent)
   //                         NULL, // Task handle
   //                         1     // Core ID
   // );
+
+  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
+                          "motor_throttles_task", // Name for debugging
+                          1024 * 4,               // Stack size in bytes
+                          NULL,                   // Parameters
+                          30,   // Priority (higher = more urgent)
+                          NULL, // Task handle
+                          1     // Core ID
+  );
 
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
@@ -92,19 +81,31 @@ extern "C" void app_main(void) {
 
       std::optional<Eigen::Vector3f> coords;
       float lat, lon, alt;
-      if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)10) == pdTRUE) {
+      bool gps_values = false;
+      bool fix = false;
+      uint8_t sat_count = 0;
+      if (gps_mutex && xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
         if (gps->gps_avaliable()) {
           coords = gps->get_coordinates();
           lat = gps->gps->latitudeDegrees;
           lon = gps->gps->longitudeDegrees;
           alt = gps->gps->altitude;
+          gps_values = true;
         }
+        sat_count = gps->gps->satellites;
+        fix = gps->gps->fix;
         xSemaphoreGive(gps_mutex);
+
+        if (gps_values) {
+
+          ESP_LOGI(TAG,
+                   "loc -> lat: %f, long: %f, height: %f, sat_c: %d, fix: %b",
+                   lat, lon, alt, sat_count, fix);
+        }
 
         if (coords.has_value()) {
           auto D_pos = coords.value();
 
-          ESP_LOGI(TAG, "loc -> lat: %f, long: %f, height: %f", lat, lon, alt);
           ESP_LOGI(TAG, "    -> D(pos): (%f, %f, %f)", D_pos[0], D_pos[1],
                    D_pos[2]);
         }
@@ -125,6 +126,13 @@ extern "C" void app_main(void) {
         ESP_LOGI(TAG, "nav(vel): (%f, %f, %f)", local_vel[0], local_vel[1],
                  local_vel[2]);
       }
+
+      ESP_LOGI(TAG, "Throttles: (%f, %f, %f, %f)", motor_throttles[0],
+               motor_throttles[1], motor_throttles[2], motor_throttles[3]);
+
+      ESP_LOGI(TAG, "Controller: (%f, %f), (%f, %f)",
+               current_controller_input.lx, current_controller_input.ly,
+               current_controller_input.rx, current_controller_input.ry);
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));

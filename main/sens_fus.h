@@ -34,15 +34,15 @@ struct sens_fus_compl {
    * so at t=tau, were 63% of the way there
    * at t=3*tau, were 95% of the way there
    */
-  Eigen::Vector3f tau_gps_pos = {4.0f, 4.0f, 10.0f};
-  Eigen::Vector3f tau_gps_vel = {5.0f, 5.0f, INFINITY};
+  Eigen::Vector3f tau_gps_pos = {20.0f, 20.0f, INFINITY};
+  Eigen::Vector3f tau_gps_vel = {40.0f, 40.0f, INFINITY};
 
-  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 5.0f};
-  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 10.0f};
+  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 15.0f};
+  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 30.0f};
 
-  float tau_yaw = 10.0f; // Yaw remains a scalar
+  float tau_yaw = 20.0f; // Yaw remains a scalar
 
-  Eigen::Matrix3f yaw_rotation_matrix;
+  Eigen::Matrix3f yaw_rotation_matrix = Eigen::Matrix3f::Identity().eval();
 
   void update_yaw_matrix() {
     yaw_rotation_matrix =
@@ -81,12 +81,13 @@ struct sens_fus_compl {
       this->yaw_offset =
           std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
       this->update_yaw_matrix();
-    }
 
-    // res = (1 - alpha) * state + alpha * measurement
-    this->velocity =
-        (Eigen::Vector3f::Ones() - alpha_vel).array() * this->velocity.array() +
-        alpha_vel.array() * gps_vel.array();
+      this->velocity = (Eigen::Vector3f::Ones() - alpha_vel).array() *
+                           this->velocity.array() +
+                       alpha_vel.array() * gps_vel.array();
+    } else if (this->velocity.norm() > 1.0) {
+      this->velocity *= 1 - (0.90 * dt);
+    }
   }
 
   void measure_baro(float dt, Eigen::Vector3f baro_pos,

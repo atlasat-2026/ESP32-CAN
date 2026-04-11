@@ -21,6 +21,9 @@ const float TO_RAD = M_PI / 180.0f;
 const float KNOTS_TO_M_SEC = 0.5144444f;
 const float earth_radius = 6371000.0f;
 
+#define GPS_RX_PIN 16
+#define GPS_TX_PIN 17
+
 struct GPS {
   Adafruit_GPS *gps;
   float origin_lat;
@@ -33,8 +36,9 @@ struct GPS {
   }
 
   void begin() {
+    Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
     this->gps = new Adafruit_GPS(&Serial2);
-    this->gps->begin(9600);
+    // this->gps->begin(9600);
     this->gps->sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
     this->gps->sendCommand(PMTK_API_SET_FIX_CTL_5HZ);

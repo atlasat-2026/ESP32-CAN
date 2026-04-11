@@ -52,14 +52,14 @@ extern "C" void app_main(void) {
   //                         1     // Core ID
   // );
 
-  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
-                          "motor_throttles_task", // Name for debugging
-                          1024 * 4,               // Stack size in bytes
-                          NULL,                   // Parameters
-                          30,   // Priority (higher = more urgent)
-                          NULL, // Task handle
-                          1     // Core ID
-  );
+  // xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
+  //                         "motor_throttles_task", // Name for debugging
+  //                         1024 * 4,               // Stack size in bytes
+  //                         NULL,                   // Parameters
+  //                         30,   // Priority (higher = more urgent)
+  //                         NULL, // Task handle
+  //                         1     // Core ID
+  // );
 
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
@@ -76,7 +76,7 @@ extern "C" void app_main(void) {
       handle_packet(&packet_data[0]);
     }
 
-    if (millis() > last_print_time + 1000) {
+    if (millis() > last_print_time + 5000) {
       last_print_time = millis();
 
       std::optional<Eigen::Vector3f> coords;

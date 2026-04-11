@@ -58,6 +58,7 @@ void radio_task(void *pvParameters) {
     radio.setHighPower(true);
     radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
     ESP_LOGI(TAG, "Radio Initialized. Version: 0x%02X", radio.readReg(0x10));
+    radio.readAllRegsCompact();
 
   } else {
     ESP_LOGE(TAG, "Radio Init FAILED! Restarting.");

@@ -24,9 +24,9 @@ void setup_imu() {
   imu_state *local_state = new imu_state;
   imu_state_mutex = xSemaphoreCreateMutex();
 
-  BNO08x *imu = new BNO08x(
-      bno08x_config_t(SPI2_HOST, GPIO_NUM_26, GPIO_NUM_27, GPIO_NUM_25,
-                      GPIO_NUM_33, GPIO_NUM_36, GPIO_NUM_32, 2000000, false));
+  BNO08x *imu = new BNO08x(bno08x_config_t(
+      SPI2_HOST, GPIO_NUM_26, GPIO_NUM_27, GPIO_NUM_25, // TODO: FIX
+      GPIO_NUM_33, GPIO_NUM_36, GPIO_NUM_32, 2000000, false));
 
   if (!imu->initialize()) {
     ESP_LOGE(TAG, "BNO08x Init failure.");

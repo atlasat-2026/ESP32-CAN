@@ -148,21 +148,23 @@ void drone_controller_task(void *params) {
   }
 }
 
-const gpio_num_t motor_pins[4] = {GPIO_NUM_15, GPIO_NUM_NC, GPIO_NUM_NC,
-                                  GPIO_NUM_NC};
+const gpio_num_t motor_pins[4] = {GPIO_NUM_14, GPIO_NUM_15, GPIO_NUM_16,
+                                  GPIO_NUM_46};
 
 void motor_throttles_task(void *params) {
   DShotRMT *motors[4];
   for (int i = 0; i < 4; i++) {
     motors[i] = new DShotRMT(motor_pins[i], DSHOT150, false);
   }
+  motors[0]->sendCommand(3);
 
   // ARM
   unsigned long armTime = millis();
-  while (millis() - armTime < 4000) {
+  while (millis() - armTime < 5000) {
     for (int i = 0; i < 4; i++) {
       motors[i]->sendThrottlePercent(0);
     }
+    vTaskDelay(1);
   }
 
   uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;

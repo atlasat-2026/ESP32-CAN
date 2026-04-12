@@ -24,5 +24,5 @@ void drone_controller_task(void *params);
 
 void motor_throttles_task(void *params);
 
-inline float motor_throttles[4] = {0.5, 0.5, 0.5, 0.5};
-inline bool killswitch_active;
+inline float motor_throttles[4] = {0.05, 0.05, 0.05, 0.05};
+inline bool killswitch_active = false;

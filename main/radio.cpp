@@ -2,6 +2,7 @@
 
 #include "Esp.h"
 #include "esp32-hal-gpio.h"
+#include "esp32-hal-spi.h"
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include "packet_handler.h"
@@ -12,12 +13,14 @@
 
 #include <drone_comms.h>
 
-#define RFM69_RST 14
-#define RFM69_CS 12
-#define RFM69_INT 39
-#define SPI_SCLK 18
-#define SPI_MISO 19
-#define SPI_MOSI 23
+// Right to left on hardware.
+
+#define RFM69_MOSI GPIO_NUM_11
+#define RFM69_SCLK GPIO_NUM_12
+#define RFM69_MISO GPIO_NUM_13
+#define RFM69_CS GPIO_NUM_10
+#define RFM69_INT GPIO_NUM_9
+#define RFM69_RST GPIO_NUM_8
 
 #define FREQUENCY RF69_433MHZ
 #define NODEID 1
@@ -43,8 +46,8 @@ void radio_task(void *pvParameters) {
   pinMode(RFM69_CS, OUTPUT);
   pinMode(RFM69_INT, INPUT);
 
-  SPIClass vspi(VSPI);
-  vspi.begin(SPI_SCLK, SPI_MISO, SPI_MOSI, 34);
+  SPIClass hspi(HSPI);
+  hspi.begin(RFM69_SCLK, RFM69_MISO, RFM69_MOSI, RFM69_CS);
 
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, HIGH);
@@ -52,7 +55,7 @@ void radio_task(void *pvParameters) {
   digitalWrite(RFM69_RST, LOW);
   vTaskDelay(pdMS_TO_TICKS(50));
 
-  RFM69 radio(RFM69_CS, RFM69_INT, true, &vspi);
+  RFM69 radio(RFM69_CS, RFM69_INT, true, &hspi);
 
   if (radio.initialize(FREQUENCY, NODEID, NETWORKID)) {
     radio.setHighPower(true);

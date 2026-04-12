@@ -21,7 +21,7 @@ const float TO_RAD = M_PI / 180.0f;
 const float KNOTS_TO_M_SEC = 0.5144444f;
 const float earth_radius = 6371000.0f;
 
-#define GPS_RX_PIN 16
+#define GPS_RX_PIN 18
 #define GPS_TX_PIN 17
 
 struct GPS {
@@ -94,7 +94,7 @@ struct GPS {
     char c = this->gps->read();
     if (this->gps->newNMEAreceived()) {
       char *line = this->gps->lastNMEA();
-      // ESP_LOGI("GPS", "NMEA LINE: %s", line);
+      ESP_LOGI("GPS", "NMEA LINE: %s", line);
       this->gps->parse(line);
     }
   }

@@ -20,13 +20,21 @@
 
 static const char *TAG = "IMU";
 
+#define IMU_CS GPIO_NUM_3
+#define IMU_MOSI GPIO_NUM_2 // DI
+#define IMU_RST GPIO_NUM_1
+
+#define IMU_INT GPIO_NUM_4
+#define IMU_MISO GPIO_NUM_5 // SDA
+#define IMU_SCLK GPIO_NUM_6 // SCL
+
 void setup_imu() {
   imu_state *local_state = new imu_state;
   imu_state_mutex = xSemaphoreCreateMutex();
 
-  BNO08x *imu = new BNO08x(bno08x_config_t(
-      SPI2_HOST, GPIO_NUM_26, GPIO_NUM_27, GPIO_NUM_25, // TODO: FIX
-      GPIO_NUM_33, GPIO_NUM_36, GPIO_NUM_32, 2000000, false));
+  BNO08x *imu =
+      new BNO08x(bno08x_config_t(SPI2_HOST, IMU_MOSI, IMU_MISO, IMU_SCLK,
+                                 IMU_CS, IMU_INT, IMU_RST, 2000000, false));
 
   if (!imu->initialize()) {
     ESP_LOGE(TAG, "BNO08x Init failure.");

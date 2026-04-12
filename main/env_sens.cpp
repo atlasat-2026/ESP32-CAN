@@ -18,12 +18,19 @@ Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
 static const constexpr char *TAG = "BARO";
 
+#define BARO_SDA GPIO_NUM_47
+#define BARO_SCL GPIO_NUM_48
+
 namespace env_sens {
 void setup() {
 
   baro_mutex = xSemaphoreCreateMutex();
 
-  if (!bme.begin()) {
+  TwoWire *wire = new TwoWire(0);
+
+  wire->begin(BARO_SDA, BARO_SCL);
+
+  if (!bme.begin(119, wire)) {
 
     ESP_LOGE(TAG, "Couldn't find a valid sensor");
 
@@ -43,14 +50,23 @@ void setup() {
 float get_temperature() {
   sensors_event_t temp_event;
 
-  bme_temp->getEvent(&temp_event);
+  if (baro_mutex && xSemaphoreTake(baro_mutex, 30)) {
+
+    bme_temp->getEvent(&temp_event);
+    xSemaphoreGive(baro_mutex);
+  }
+
   return temp_event.temperature;
 }
 
 float get_pressure() {
   sensors_event_t e;
 
-  bme_pressure->getEvent(&e);
+  if (baro_mutex && xSemaphoreTake(baro_mutex, 30)) {
+
+    bme_pressure->getEvent(&e);
+    xSemaphoreGive(baro_mutex);
+  }
 
   return e.pressure;
 }

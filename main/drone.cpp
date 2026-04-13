@@ -2,6 +2,7 @@
 
 #include "DShotRMT.h"
 #include "Eigen/Core"
+#include "driver/rmt_tx.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
 
@@ -33,23 +34,22 @@ dcont::ControllerConfig default_config() {
       {1.0f, 1.0f, 1.0f}, // kp
       {0.0f, 0.0f, 0.0f}, // ki
       {0.0f, 0.0f, 0.0f}, // kd
-      25.0f               // frequency (Hz)
+      5.0f                // frequency (Hz)
   };
 
   // Velocity Loop (Velocity -> Acceleration/Tilt)
   config.stack.linvel_pid = {
-      {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 50.0f};
+      {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 15.0f};
 
   // Rotation Loop (Angle -> Angular Rate)
   config.stack.rotation_pid = {
-      {4.0f, 4.0f, 4.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 200.0f};
+      {4.0f, 4.0f, 4.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 50.0f};
 
   // Rate Loop (Angular Rate -> Torque) - The "Inner" Loop
-  config.stack.rate_pid = {{0.2f, 0.2f, 2.0f},
-                           {0.05f, 0.05f, 0.05f},
-                           {0.003f, 0.003f, 0.001f},
-                           1000.0f};
-
+  config.stack.rate_pid = {{0.1f, 0.1f, 1.0f},
+                           {0.01f, 0.01f, 0.01f},
+                           {0.001f, 0.001f, 0.001f},
+                           100.0f};
   // 2. Set Constraints
   config.stack.max_rate = 3.14f;   // ~180 degrees/s
   config.stack.max_linvel = 10.0f; // 10 m/s
@@ -58,13 +58,19 @@ dcont::ControllerConfig default_config() {
   config.mass = 0.350f;     // kg
   config.max_thrust = 2.6f; // Newtons
   config.max_torque = 0.5f; // Nm
-
-  // roll, pitch, yaw for each motor
-  float mixer[4][3] = {
+  /*
+    * roll, pitch, yaw
       {1.0f, -1.0f, 1.0f},   // Front Right
       {-1.0f, -1.0f, -1.0f}, // Front Left
       {-1.0f, 1.0f, 1.0f},   // Rear Left
       {1.0f, 1.0f, -1.0f}    // Rear Right
+   */
+
+  float mixer[4][3] = {
+      {1.0f, -1.0f, 1.0f},   // Front Right - Real front
+      {-1.0f, -1.0f, -1.0f}, // Front Left - Real left
+      {-1.0f, 1.0f, 1.0f},   // Rear Left - Real rear
+      {1.0f, 1.0f, -1.0f}    // Rear Right - Real right
   };
 
   for (int i = 0; i < 4; i++) {
@@ -148,34 +154,47 @@ void drone_controller_task(void *params) {
   }
 }
 
-const gpio_num_t motor_pins[4] = {GPIO_NUM_14, GPIO_NUM_15, GPIO_NUM_16,
-                                  GPIO_NUM_46};
+const gpio_num_t motor_pins[4] = {GPIO_NUM_46, GPIO_NUM_16, GPIO_NUM_14,
+                                  GPIO_NUM_15};
 
+const bool reversed[4] = {false, true, false, false};
+
+DShotRMT *motors[4];
 void motor_throttles_task(void *params) {
-  DShotRMT *motors[4];
+
   for (int i = 0; i < 4; i++) {
-    motors[i] = new DShotRMT(motor_pins[i], DSHOT150, false);
+    motors[i] = new DShotRMT(motor_pins[i], DSHOT300, false);
+
+    motors[i]->begin();
+
+    rmt_tx_wait_all_done(motors[i]->_rmt_tx_channel, 2);
+    motors[i]->_cleanupRmtResources();
   }
-  motors[0]->sendCommand(3);
 
   // ARM
   unsigned long armTime = millis();
   while (millis() - armTime < 5000) {
     for (int i = 0; i < 4; i++) {
+      motors[i]->begin();
       motors[i]->sendThrottlePercent(0);
+
+      rmt_tx_wait_all_done(motors[i]->_rmt_tx_channel, 2);
+      // delayMicroseconds(50);
+      motors[i]->_cleanupRmtResources();
     }
-    vTaskDelay(1);
+    // vTaskDelay(1);
   }
 
-  uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;
   while (true) {
     for (int i = 0; i < 4; i++) {
-      if (!killswitch_active) {
-        motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f);
-      } else {
-        motors[i]->sendThrottlePercent(0.0f);
-      }
+      motors[i]->begin();
+
+      motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f);
+
+      rmt_tx_wait_all_done(motors[i]->_rmt_tx_channel, 2);
+      // delayMicroseconds(50);
+      motors[i]->_cleanupRmtResources();
     }
-    vTaskDelay(1);
+    // vTaskDelay(1);
   }
 }

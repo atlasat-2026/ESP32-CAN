@@ -38,11 +38,13 @@ extern "C" void app_main(void) {
   //                         NULL,         // Task handle
   //                         0             // Core ID
   // );
-  // //
-  xTaskCreate(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 1, NULL);
   //
-  xTaskCreate(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL);
+  // xTaskCreatePinnedToCore(env_sens::baro_poll_task, "baro_poll", 8192, NULL,
+  // 1,
+  //                         NULL, 0);
   //
+  // xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
+
   // xTaskCreatePinnedToCore(drone_controller_task,   // Function name
   //                         "drone_controller_task", // Name for debugging
   //                         1024 * 32,               // Stack size in bytes
@@ -56,14 +58,14 @@ extern "C" void app_main(void) {
                           "motor_throttles_task", // Name for debugging
                           1024 * 4,               // Stack size in bytes
                           NULL,                   // Parameters
-                          30,   // Priority (higher = more urgent)
+                          24,   // Priority (higher = more urgent)
                           NULL, // Task handle
                           1     // Core ID
   );
 
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
-  setup_imu();
+  // setup_imu();
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};

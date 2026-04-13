@@ -40,7 +40,6 @@ dcont::ControllerConfig default_config() {
   // Velocity Loop (Velocity -> Acceleration/Tilt)
   config.stack.linvel_pid = {
       {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 15.0f};
-
   // Rotation Loop (Angle -> Angular Rate)
   config.stack.rotation_pid = {
       {4.0f, 4.0f, 4.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 50.0f};
@@ -67,10 +66,10 @@ dcont::ControllerConfig default_config() {
    */
 
   float mixer[4][3] = {
-      {1.0f, -1.0f, 1.0f},   // Front Right - Real front
-      {-1.0f, -1.0f, -1.0f}, // Front Left - Real left
-      {-1.0f, 1.0f, 1.0f},   // Rear Left - Real rear
-      {1.0f, 1.0f, -1.0f}    // Rear Right - Real right
+      {1.0f, -1.0f, 1.0f},   // Front Right
+      {-1.0f, -1.0f, -1.0f}, // Front Left
+      {-1.0f, 1.0f, 1.0f},   // Rear Left
+      {1.0f, 1.0f, -1.0f}    // Rear Right
   };
 
   for (int i = 0; i < 4; i++) {
@@ -157,44 +156,29 @@ void drone_controller_task(void *params) {
 const gpio_num_t motor_pins[4] = {GPIO_NUM_46, GPIO_NUM_16, GPIO_NUM_14,
                                   GPIO_NUM_15};
 
-const bool reversed[4] = {false, true, false, false};
+// const bool reversed[4] = {false, true, false, false};
 
 DShotRMT *motors[4];
 void motor_throttles_task(void *params) {
 
   for (int i = 0; i < 4; i++) {
     motors[i] = new DShotRMT(motor_pins[i], DSHOT300, false);
-
     motors[i]->begin();
-
-    rmt_tx_wait_all_done(motors[i]->_rmt_tx_channel, 2);
-    motors[i]->_cleanupRmtResources();
   }
 
   // ARM
   unsigned long armTime = millis();
   while (millis() - armTime < 5000) {
     for (int i = 0; i < 4; i++) {
-      motors[i]->begin();
       motors[i]->sendThrottlePercent(0);
-
-      rmt_tx_wait_all_done(motors[i]->_rmt_tx_channel, 2);
-      // delayMicroseconds(50);
-      motors[i]->_cleanupRmtResources();
     }
-    // vTaskDelay(1);
+    vTaskDelay(1);
   }
 
   while (true) {
     for (int i = 0; i < 4; i++) {
-      motors[i]->begin();
-
       motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f);
-
-      rmt_tx_wait_all_done(motors[i]->_rmt_tx_channel, 2);
-      // delayMicroseconds(50);
-      motors[i]->_cleanupRmtResources();
     }
-    // vTaskDelay(1);
+    vTaskDelay(1);
   }
 }

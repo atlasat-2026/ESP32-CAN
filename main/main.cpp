@@ -6,7 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
-#include "freertos/task.h" #include < cstddef>
+#include "freertos/task.h"
 #include <cstdint>
 #include <optional>
 
@@ -54,14 +54,14 @@ extern "C" void app_main(void) {
   //                         1     // Core ID
   // );
 
-  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
-                          "motor_throttles_task", // Name for debugging
-                          1024 * 4,               // Stack size in bytes
-                          NULL,                   // Parameters
-                          24,   // Priority (higher = more urgent)
-                          NULL, // Task handle
-                          1     // Core ID
-  );
+  // xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
+  //                         "motor_throttles_task", // Name for debugging
+  //                         1024 * 4,               // Stack size in bytes
+  //                         NULL,                   // Parameters
+  //                         24,   // Priority (higher = more urgent)
+  //                         NULL, // Task handle
+  //                         1     // Core ID
+  // );
 
   // setup_imu();
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");

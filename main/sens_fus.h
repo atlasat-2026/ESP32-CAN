@@ -1,6 +1,7 @@
 #pragma once
 #include "Eigen/Core"
 #include <cmath>
+#include <cstdlib>
 
 #ifdef PS
 #undef PS
@@ -42,7 +43,7 @@ struct sens_fus_compl {
   Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 15.0f};
   Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 30.0f};
 
-  float tau_yaw = 20.0f; // Yaw remains a scalar
+  float tau_yaw = 20.0f;
 
   Eigen::Matrix3f yaw_rotation_matrix = Eigen::Matrix3f::Identity().eval();
 
@@ -81,14 +82,15 @@ struct sens_fus_compl {
           this->velocity - this->velocity_last_gps_measurment;
       Eigen::Vector3f delta_v_gps = this->velocity - gps_vel;
 
-      float yaw_delta = getYawDifference(delta_v_gps, delta_v_imu);
+      if (abs(delta_v_gps.norm() - delta_v_imu.norm()) < 1.0 * dt) {
+        float yaw_delta = getYawDifference(delta_v_gps, delta_v_imu);
 
-      this->yaw_offset += yaw_delta * alpha_yaw;
+        this->yaw_offset += yaw_delta * alpha_yaw;
 
-      this->yaw_offset =
-          std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
-      this->update_yaw_matrix();
-
+        this->yaw_offset =
+            std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
+        this->update_yaw_matrix();
+      }
       this->velocity = (Eigen::Vector3f::Ones() - alpha_vel).array() *
                            this->velocity.array() +
                        alpha_vel.array() * gps_vel.array();

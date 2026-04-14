@@ -63,19 +63,25 @@ extern "C" void app_main(void) {
                           1     // Core ID
   );
 
-  ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
-
   // setup_imu();
+  ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};
   bool nav_data_ready = false;
 
   uint64_t last_print_time = 0;
+  uint64_t last_broadcast_time = 0;
+
   while (true) {
     while (packet_tx_queue &&
            xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
       handle_packet(&packet_data[0]);
+    }
+
+    if (millis() > last_broadcast_time + 100) {
+      send_packet_getter(PACKET_TYPE::INFO_DRONE_POSITION);
+      last_broadcast_time = millis();
     }
 
     if (millis() > last_print_time + 5000) {
@@ -137,6 +143,6 @@ extern "C" void app_main(void) {
                current_controller_input.rx, current_controller_input.ry);
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }

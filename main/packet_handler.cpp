@@ -3,14 +3,18 @@
 #include "drone.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
+#include "env_sens.h"
+#include "esp32-hal.h"
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include "gps.h"
+#include "imu.h"
 #include "nav.h"
 #include "portmacro.h"
 #include "radio.h"
 #include "sens_fus.h"
 #include <cstdint>
+#include <sys/unistd.h>
 
 #ifdef PS
 #undef PS
@@ -22,15 +26,15 @@
 
 #include <Eigen/Dense>
 
-void handle_request(uint8_t *packet_addr);
-
 void handle_waypoint_update(uint8_t *packet_addr, uint8_t index);
 void handle_nav_update(uint8_t *packet_addr);
 
 void handle_packet(uint8_t *packet_addr) {
   PACKET_TYPE packet_type = *((PACKET_TYPE *)packet_addr);
   if (packet_type == PACKET_TYPE::COMMAND_REQUEST) {
-    handle_request(packet_addr);
+    packet_command_request *packet =
+        (packet_command_request *)(packet_addr + sizeof(PACKET_TYPE));
+    send_packet_getter(packet->packet_requested);
   }
 
   // NAV SETTERS
@@ -64,6 +68,7 @@ void handle_packet(uint8_t *packet_addr) {
 
     if (xSemaphoreTake(controller_input_semaphore, 10)) {
       current_controller_input = *packet;
+      time_last_controller = millis();
       xSemaphoreGive(controller_input_semaphore);
     }
   }
@@ -94,23 +99,23 @@ void handle_nav_update(uint8_t *packet_addr) {
   }
 }
 
-void handle_request(uint8_t *packet_addr) {
+void send_packet_getter(PACKET_TYPE requested_type) {
 
-  packet_command_request *packet =
-      (packet_command_request *)(packet_addr + sizeof(PACKET_TYPE));
-  PACKET_TYPE requested_type = packet->packet_requested;
   std::pair<uint8_t *, size_t> resp_packet = {nullptr, 0};
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_POSITION) {
     // TODO: send pitch, roll, yaw
-    resp_packet =
-        create_packet_pooled(PACKET_TYPE::INFO_DRONE_POSITION,
-                             packet_info_drone_position{
-                                 {sens_fus.position.x(), sens_fus.position.y(),
-                                  sens_fus.position.z()},
-                                 {sens_fus.velocity.x(), sens_fus.velocity.y(),
-                                  sens_fus.velocity.z()},
-                                 {0.0, 0.0, 0.0}});
+    resp_packet = create_packet_pooled(
+        PACKET_TYPE::INFO_DRONE_POSITION,
+        packet_info_drone_position{
+            .trans = {sens_fus.position.x(), sens_fus.position.y(),
+                      sens_fus.position.z()},
+            .vel = {sens_fus.velocity.x(), sens_fus.velocity.y(),
+                    sens_fus.velocity.z()},
+            .rot = {imu_state_var.rot_euler.x(), imu_state_var.rot_euler.y(),
+                    imu_state_var.rot_euler.z()},
+            .pressure = env_sens::get_pressure(),
+            .temperature = env_sens::get_temperature()});
   }
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {

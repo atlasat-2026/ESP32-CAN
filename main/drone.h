@@ -1,5 +1,7 @@
 #pragma once
 
+#include "esp32-hal.h"
+#include <cstdint>
 #ifdef PS
 #undef PS
 #endif
@@ -25,5 +27,5 @@ void drone_controller_task(void *params);
 void motor_throttles_task(void *params);
 
 // 3     4     2     1
-inline float motor_throttles[4] = {0.01, 0.01, 0.01, 0.01};
+inline float *motor_throttles;
 inline bool killswitch_active = false;

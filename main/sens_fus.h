@@ -1,4 +1,5 @@
 #pragma once
+#include "Eigen/Core"
 #include <cmath>
 
 #ifdef PS
@@ -25,6 +26,7 @@ inline float getYawDifference(const Eigen::Vector3f &v_gps,
 struct sens_fus_compl {
   Eigen::Vector3f position = Eigen::Vector3f::Zero();
   Eigen::Vector3f velocity = Eigen::Vector3f::Zero();
+  Eigen::Vector3f velocity_last_gps_measurment = Eigen::Vector3f::Zero();
   Eigen::Vector3f last_accel_world = Eigen::Vector3f::Zero();
   float yaw_offset = 0.0f;
 
@@ -75,7 +77,12 @@ struct sens_fus_compl {
 
     // 2. Yaw Correction (only if moving > 1.0 m/s)
     if (gps_vel.norm() > 1.0f) {
-      float yaw_delta = getYawDifference(gps_vel, this->velocity);
+      Eigen::Vector3f delta_v_imu =
+          this->velocity - this->velocity_last_gps_measurment;
+      Eigen::Vector3f delta_v_gps = this->velocity - gps_vel;
+
+      float yaw_delta = getYawDifference(delta_v_gps, delta_v_imu);
+
       this->yaw_offset += yaw_delta * alpha_yaw;
 
       this->yaw_offset =
@@ -88,6 +95,8 @@ struct sens_fus_compl {
     } else if (this->velocity.norm() > 1.0) {
       this->velocity *= 1 - (0.90 * dt);
     }
+
+    this->velocity_last_gps_measurment = this->velocity;
   }
 
   void measure_baro(float dt, Eigen::Vector3f baro_pos,

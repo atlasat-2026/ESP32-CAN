@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #ifdef PS
 #undef PS
 #endif
@@ -23,6 +24,12 @@ void dbg_sens();
 
 float get_altitude();
 void baro_poll_task(void *_);
+
+inline uint64_t time_term_read = 0;
+inline uint64_t time_baro_read = 0;
+
+inline float term_read = 0;
+inline float baro_read = 0;
 
 } // namespace env_sens
 

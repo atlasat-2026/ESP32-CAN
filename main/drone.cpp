@@ -8,6 +8,7 @@
 
 #include "dshot_definitions.h"
 #include "esp32-hal.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
@@ -20,6 +21,7 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <stdlib.h>
 
 #define CONTROLLER_TASK_FREQUENCY 1000.0;
 
@@ -31,45 +33,43 @@ dcont::ControllerConfig default_config() {
 
   // Position Loop (Position -> Velocity)
   config.stack.position_pid = {
-      {1.0f, 1.0f, 1.0f}, // kp
-      {0.0f, 0.0f, 0.0f}, // ki
-      {0.0f, 0.0f, 0.0f}, // kd
-      5.0f                // frequency (Hz)
+      .kp = {1.0f, 1.0f, 1.0f}, // kp
+      .ki = {0.0f, 0.0f, 0.0f}, // ki
+      .kd = {0.0f, 0.0f, 0.0f}, // kd
+      .frequency = 25.0f        // frequency (Hz)
   };
 
-  // Velocity Loop (Velocity -> Acceleration/Tilt)
-  config.stack.linvel_pid = {
-      {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 15.0f};
-  // Rotation Loop (Angle -> Angular Rate)
-  config.stack.rotation_pid = {
-      {4.0f, 4.0f, 4.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, 50.0f};
+  // Velocity Loop (Velocity -> Acceleration/Rotation)
+  config.stack.linvel_pid = {.kp = {1.0f, 1.0f, 1.0f},
+                             .ki = {0.0f, 0.0f, 0.0f},
+                             .kd = {0.0f, 0.0f, 0.0f},
+                             .frequency = 50.0f};
+  // Rotation Loop (Rotation/Accel -> Angular Rate)
+  config.stack.rotation_pid = {.kp = {4.0f, 4.0f, 4.0f},
+                               .ki = {1.0f, 1.0f, 1.0f},
+                               .kd = {0.0f, 0.0f, 0.0f},
+                               .frequency = 200.0f};
 
   // Rate Loop (Angular Rate -> Torque) - The "Inner" Loop
-  config.stack.rate_pid = {{0.1f, 0.1f, 1.0f},
-                           {0.01f, 0.01f, 0.01f},
-                           {0.001f, 0.001f, 0.001f},
-                           100.0f};
+  config.stack.rate_pid = {.kp = {0.1f, 0.1f, 1.0f},
+                           .ki = {0.01f, 0.01f, 0.01f},
+                           .kd = {0.001f, 0.001f, 0.001f},
+                           .frequency = 1000.0f};
   // 2. Set Constraints
-  config.stack.max_rate = 3.14f;   // ~180 degrees/s
-  config.stack.max_linvel = 10.0f; // 10 m/s
+  config.stack.max_rate = 3.14f;  // ~180 degrees/s
+  config.stack.max_linvel = 3.0f; // 10 m/s
 
   // 3. Physical Drone Properties
   config.mass = 0.350f;     // kg
   config.max_thrust = 2.6f; // Newtons
   config.max_torque = 0.5f; // Nm
-  /*
-    * roll, pitch, yaw
-      {1.0f, -1.0f, 1.0f},   // Front Right
-      {-1.0f, -1.0f, -1.0f}, // Front Left
-      {-1.0f, 1.0f, 1.0f},   // Rear Left
-      {1.0f, 1.0f, -1.0f}    // Rear Right
-   */
 
   float mixer[4][3] = {
-      {1.0f, -1.0f, 1.0f},   // Front Right
-      {-1.0f, -1.0f, -1.0f}, // Front Left
-      {-1.0f, 1.0f, 1.0f},   // Rear Left
-      {1.0f, 1.0f, -1.0f}    // Rear Right
+      // roll, pitch, yaw
+      {-1.0, -1.0, -1.0}, // Front Left
+      {1.0, 1.0, -1.0},   // Rear Right
+      {-1.0, 1.0, 1.0},   // Rear Left
+      {1.0, -1.0, 1.0},   // Front Right
   };
 
   for (int i = 0; i < 4; i++) {
@@ -90,9 +90,10 @@ void drone_cont_stabilize() {
   // afterwards
 }
 
+constexpr uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;
+
 void drone_controller_task(void *params) {
   setup_drone();
-  uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;
 
   imu_state imu_state_local;
   Eigen::Vector3f position_local = Eigen::Vector3f::Zero();
@@ -118,6 +119,9 @@ void drone_controller_task(void *params) {
     packet_controller_input cont_input;
     if (current_input_mode == dcont::ModeInput::Acro &&
         xSemaphoreTake(controller_input_semaphore, 10)) {
+      if (millis() - time_last_controller > 1) {
+        current_controller_input = {0, 0, 0, 0};
+      }
       cont_input = current_controller_input;
 
       xSemaphoreGive(controller_input_semaphore);
@@ -136,18 +140,21 @@ void drone_controller_task(void *params) {
     } else {
       auto coords = wayp.coords_in_axis.value_or(Eigen::Vector3f::Zero());
 
-      dcont::set_input(drone_controller,
-                       dcont::Input{{cont_input.ly, cont_input.lx,
-                                     cont_input.rx, cont_input.ry},
-                                    {0.0, 0.0, 0.0},
-                                    {0.0, 0.0, 0.0},
-                                    {0.0, 0.0, 0.0},
-                                    {coords.x(), coords.y(), coords.z()},
-                                    current_input_mode});
+      dcont::set_input(
+          drone_controller,
+          dcont::Input{.joystick = {.throttle_input = cont_input.ly,
+                                    .roll_input = cont_input.rx,
+                                    .yaw_input = cont_input.lx,
+                                    .pitch_input = cont_input.ry},
+                       .acceleration = {0.0, 0.0, 0.0},
+                       .rotation = {0.0, 0.0, 0.0},
+                       .velocity = {0.0, 0.0, 0.0},
+                       .position = {coords.x(), coords.y(), coords.z()},
+                       .mode = current_input_mode});
     }
 
-    memcpy(dcont::get_throttles(drone_controller).values, motor_throttles,
-           sizeof(motor_throttles));
+    // memcpy(dcont::get_throttles(drone_controller).values, motor_throttles,
+    //        sizeof(motor_throttles));
 
     vTaskDelay(pdMS_TO_TICKS(wait_ms));
   }
@@ -156,12 +163,12 @@ void drone_controller_task(void *params) {
 const gpio_num_t motor_pins[4] = {GPIO_NUM_46, GPIO_NUM_16, GPIO_NUM_14,
                                   GPIO_NUM_15};
 
-// const bool reversed[4] = {false, true, false, false};
-
 DShotRMT *motors[4];
 void motor_throttles_task(void *params) {
+  motor_throttles = (float *)malloc(sizeof(float) * 4);
 
   for (int i = 0; i < 4; i++) {
+    motor_throttles[i] = 0;
     motors[i] = new DShotRMT(motor_pins[i], DSHOT300, false);
     motors[i]->begin();
   }
@@ -172,13 +179,13 @@ void motor_throttles_task(void *params) {
     for (int i = 0; i < 4; i++) {
       motors[i]->sendThrottlePercent(0);
     }
-    vTaskDelay(1);
+    vTaskDelay(2);
   }
 
   while (true) {
     for (int i = 0; i < 4; i++) {
       motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f);
     }
-    vTaskDelay(1);
+    vTaskDelay(2);
   }
 }

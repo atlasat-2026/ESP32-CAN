@@ -36,10 +36,12 @@ void setup_imu() {
       new BNO08x(bno08x_config_t(SPI2_HOST, IMU_MOSI, IMU_MISO, IMU_SCLK,
                                  IMU_CS, IMU_INT, IMU_RST, 2000000, false));
 
+  ESP_LOGI(TAG, "INITIALIZING IMU");
   if (!imu->initialize()) {
     ESP_LOGE(TAG, "BNO08x Init failure.");
     ESP.restart();
   }
+  imu->print_product_ids();
 
   imu->dynamic_calibration_autosave_enable();
   imu->dynamic_calibration_enable(BNO08xCalSel::all);
@@ -49,6 +51,7 @@ void setup_imu() {
   imu->rpt.cal_gyro.enable(2500UL);
 
   imu->register_cb([imu, local_state]() {
+    ESP_LOGI("IMU", "CALLBACK");
     bool needs_updating = false;
     if (sens_fus_mutex == NULL || imu_state_mutex == NULL)
       return;
@@ -59,8 +62,12 @@ void setup_imu() {
 
       auto sens_rot = imu->rpt.rv_game.get_quat();
       auto sens_euler = imu->rpt.rv_game.get_euler();
-      local_state->rot = {sens_rot.i, sens_rot.j, sens_rot.k, sens_rot.real};
-      local_state->rot_euler = {sens_euler.x, sens_euler.y, sens_euler.z};
+      local_state->rot = {sens_rot.i, sens_rot.j, sens_rot.k,
+                          sens_rot.real}; // FIXME: WRONG ROTATION
+      local_state->rot_euler = {sens_euler.x, -sens_euler.y, -sens_euler.z};
+      ESP_LOGI("IMU", "rot: roll %f, pitch %f, yaw %f",
+               local_state->rot_euler.x(), local_state->rot_euler.y(),
+               local_state->rot_euler.z());
     }
 
     if (imu->rpt.cal_gyro.has_new_data()) {
@@ -68,7 +75,7 @@ void setup_imu() {
       needs_updating = true;
 
       auto cal_gyro = imu->rpt.cal_gyro.get();
-      local_state->angvel = {cal_gyro.x, cal_gyro.y, cal_gyro.z};
+      local_state->angvel = {cal_gyro.x, -cal_gyro.y, -cal_gyro.z};
     }
 
     if (imu->rpt.linear_accelerometer.has_new_data()) {
@@ -76,7 +83,7 @@ void setup_imu() {
       needs_updating = true;
 
       auto sens_accel = imu->rpt.linear_accelerometer.get();
-      local_state->accel = {sens_accel.x, sens_accel.y, sens_accel.z};
+      local_state->accel = {sens_accel.x, -sens_accel.y, -sens_accel.z};
       int64_t current_time = esp_timer_get_time();
 
       if (local_state->last_time != -1) {

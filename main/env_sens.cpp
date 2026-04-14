@@ -48,27 +48,35 @@ void setup() {
 }
 
 float get_temperature() {
-  sensors_event_t temp_event;
 
-  if (baro_mutex && xSemaphoreTake(baro_mutex, 30)) {
+  if (millis() - env_sens::time_term_read > 20) {
 
-    bme_temp->getEvent(&temp_event);
-    xSemaphoreGive(baro_mutex);
+    sensors_event_t temp_event;
+    if (baro_mutex && xSemaphoreTake(baro_mutex, 30)) {
+
+      bme_temp->getEvent(&temp_event);
+      xSemaphoreGive(baro_mutex);
+    }
+
+    return temp_event.temperature;
   }
-
-  return temp_event.temperature;
+  return env_sens::term_read;
 }
 
 float get_pressure() {
-  sensors_event_t e;
 
-  if (baro_mutex && xSemaphoreTake(baro_mutex, 30)) {
+  if (millis() - env_sens::time_baro_read > 20) {
 
-    bme_pressure->getEvent(&e);
-    xSemaphoreGive(baro_mutex);
+    sensors_event_t e;
+    if (baro_mutex && xSemaphoreTake(baro_mutex, 30)) {
+
+      bme_pressure->getEvent(&e);
+      xSemaphoreGive(baro_mutex);
+    }
+
+    return e.pressure;
   }
-
-  return e.pressure;
+  return env_sens::baro_read;
 }
 
 float calculateAltitude(float pressure, float seaLevelPressure,

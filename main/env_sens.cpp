@@ -1,11 +1,13 @@
 #include "env_sens.h"
 
+#include "nav.h"
 #include "sens_fus.h"
 
 #include "esp_log.h"
 #include <Adafruit_BME280.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <cmath>
 
 #include "freertos/idf_additions.h"
 
@@ -113,6 +115,9 @@ void baro_poll_task(void *_) {
 
     if (dt > 0.001f) { // Prevent division by zero
       float current_alt = env_sens::get_altitude();
+      if (current_alt == INFINITY) {
+        continue;
+      }
 
       filtered_alt = (alt_lpf * current_alt) + (1.0f - alt_lpf) * filtered_alt;
 

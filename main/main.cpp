@@ -1,12 +1,13 @@
 #include "driver/gpio.h"
-#include "drone.h"
-#include "drone_comms.h"
+#include "drone.h" #include "drone_comms.h"
+#include "drone_controller.h"
 #include "esp32-hal.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
+#include <atomic>
 #include <cstdint>
 #include <optional>
 
@@ -20,6 +21,8 @@
 
 static const char *TAG = "MAIN";
 
+#define TIME_RELEASE_QUEUE_TO_ACTIVATION 1000
+
 extern "C" void app_main(void) {
 
   sens_fus_mutex = xSemaphoreCreateMutex();
@@ -30,20 +33,19 @@ extern "C" void app_main(void) {
   gpio_install_isr_service(0);
   Serial.begin(115200);
 
-  // xTaskCreatePinnedToCore(radio_task,   // Function name
-  //                         "radio_rxtx", // Name for debugging
-  //                         4096,         // Stack size in bytes
-  //                         NULL,         // Parameters
-  //                         5,            // Priority (higher = more urgent)
-  //                         NULL,         // Task handle
-  //                         0             // Core ID
-  // );
-  //
-  // xTaskCreatePinnedToCore(env_sens::baro_poll_task, "baro_poll", 8192, NULL,
-  // 1,
-  //                         NULL, 0);
-  //
-  // xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
+  xTaskCreatePinnedToCore(radio_task,   // Function name
+                          "radio_rxtx", // Name for debugging
+                          4096,         // Stack size in bytes
+                          NULL,         // Parameters
+                          5,            // Priority (higher = more urgent)
+                          NULL,         // Task handle
+                          0             // Core ID
+  );
+
+  xTaskCreatePinnedToCore(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 5,
+                          NULL, 0);
+
+  xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
 
   // xTaskCreatePinnedToCore(drone_controller_task,   // Function name
   //                         "drone_controller_task", // Name for debugging
@@ -63,7 +65,7 @@ extern "C" void app_main(void) {
   //                         1     // Core ID
   // );
 
-  // setup_imu();
+  setup_imu();
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
@@ -71,20 +73,49 @@ extern "C" void app_main(void) {
   bool nav_data_ready = false;
 
   uint64_t last_print_time = 0;
-  uint64_t last_broadcast_time = 0;
+  uint64_t last_position_broadcast_time = 0;
+  uint64_t last_status_broadcast_time = 0;
+  uint64_t time_activation_queue = 0;
+  bool released = false;
 
   while (true) {
-    while (packet_tx_queue &&
-           xQueueReceive(packet_tx_queue, &packet_data[0], 1)) {
+    while (packet_rx_queue &&
+           xQueueReceive(packet_rx_queue, &packet_data[0], 1)) {
       handle_packet(&packet_data[0]);
     }
 
-    if (millis() > last_broadcast_time + 100) {
+    if (millis() > last_position_broadcast_time + 200 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_POSITION);
-      last_broadcast_time = millis();
+      last_position_broadcast_time = millis();
+    }
+    // auto vel = sens_fus.velocity;
+    // ESP_LOGI("GPSvsIMU", "gps_vel: %f, imu_vel: %f",
+    //          gps->velocity().value().norm(),
+    //          Eigen::Vector3f(vel.x(), vel.y(), 0.0).norm());
+
+    if (millis() > last_status_broadcast_time + 500 && packet_tx_queue) {
+      send_packet_getter(PACKET_TYPE::INFO_DRONE_STATUS);
+      last_status_broadcast_time = millis();
     }
 
-    if (millis() > last_print_time + 5000) {
+    if (imu_state_var.lin_accel_global.z < -8.0 && !released) {
+      released = true;
+      time_activation_queue = millis();
+    }
+
+    if (released &&
+        std::atomic_load(&drone_cont->current_input_mode) ==
+            INPUT_TYPE::AUTO_NAV &&
+        millis() - time_activation_queue > TIME_RELEASE_QUEUE_TO_ACTIVATION) {
+
+      dcont::reset_pid_states(drone_cont->drone_controller);
+      std::atomic_store(&killswitch_active, false);
+      // std::atomic_store(&drone_cont->current_input_mode,
+      // INPUT_TYPE::AUTO_NAV);
+    }
+
+    // Logging
+    if (millis() > last_print_time + 1000) {
       last_print_time = millis();
 
       std::optional<Eigen::Vector3f> coords;
@@ -135,12 +166,20 @@ extern "C" void app_main(void) {
                  local_vel[2]);
       }
 
-      ESP_LOGI(TAG, "Throttles: (%f, %f, %f, %f)", motor_throttles[0],
-               motor_throttles[1], motor_throttles[2], motor_throttles[3]);
+      if (motor_throttles != nullptr) {
 
-      ESP_LOGI(TAG, "Controller: (%f, %f), (%f, %f)",
-               current_controller_input.lx, current_controller_input.ly,
-               current_controller_input.rx, current_controller_input.ry);
+        ESP_LOGI(TAG, "Throttles: (%f, %f, %f, %f)", motor_throttles[0],
+                 motor_throttles[1], motor_throttles[2], motor_throttles[3]);
+      }
+
+      if (time_last_controller - millis() < CONNECTION_LOST_THRESHOLD) {
+
+        ESP_LOGI(TAG, "Controller: (%f, %f), (%f, %f)",
+                 current_controller_input.lx, current_controller_input.ly,
+                 current_controller_input.rx, current_controller_input.ry);
+      }
+      // ESP_LOGI(TAG, "ROT: (%f, %f, %f)", imu_state_var.rot_euler.x(),
+      //          imu_state_var.rot_euler.y(), imu_state_var.rot_euler.z());
     }
 
     vTaskDelay(pdMS_TO_TICKS(50));

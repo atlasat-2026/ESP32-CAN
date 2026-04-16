@@ -52,6 +52,6 @@ void gps_poll_task(void *_) {
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10)); // 10Hz polling
+    vTaskDelay(pdMS_TO_TICKS(5)); // 10Hz polling
   }
 }

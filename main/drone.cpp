@@ -2,6 +2,7 @@
 
 #include "DShotRMT.h"
 #include "Eigen/Core"
+#include "Eigen/Geometry"
 #include "driver/rmt_tx.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
@@ -81,80 +82,14 @@ dcont::ControllerConfig default_config() {
   return config;
 }
 
-void setup_drone() { drone_controller = dcont::create(default_config()); }
-
-void drone_cont_stabilize() {
-  // TODO: Implement stabilization. if |angvel| > something, we should make it 0
-  // first, then if falling fast, pull rotation to the side, then when falling
-  // is stabilized, turn slowly up until pointing up. let velocity dissipate
-  // afterwards
-}
-
 constexpr uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;
 
 void drone_controller_task(void *params) {
-  setup_drone();
-
-  imu_state imu_state_local;
-  Eigen::Vector3f position_local = Eigen::Vector3f::Zero();
-  Eigen::Vector3f velocity_local = Eigen::Vector3f::Zero();
+  drone_cont = new drone_cont_state;
+  drone_cont->init();
 
   while (true) {
-    if (imu_state_mutex && xSemaphoreTake(imu_state_mutex, 1)) {
-      imu_state_local = imu_state_var;
-      xSemaphoreGive(imu_state_mutex);
-    }
-    if (sens_fus_mutex && xSemaphoreTake(sens_fus_mutex, 1)) {
-      position_local = sens_fus.position;
-      velocity_local = sens_fus.velocity;
-      xSemaphoreGive(sens_fus_mutex);
-    }
-
-    dcont::set_cur_time(drone_controller, millis() / 1000.0f);
-    dcont::set_cur_angvel(drone_controller, v3f_to_v3c(imu_state_local.angvel));
-    dcont::set_cur_linvel(drone_controller, v3f_to_v3c(velocity_local));
-    dcont::set_cur_pos(drone_controller, v3f_to_v3c(position_local));
-    dcont::set_cur_rot(drone_controller, imu_state_local.rot);
-
-    packet_controller_input cont_input;
-    if (current_input_mode == dcont::ModeInput::Acro &&
-        xSemaphoreTake(controller_input_semaphore, 10)) {
-      if (millis() - time_last_controller > 1) {
-        current_controller_input = {0, 0, 0, 0};
-      }
-      cont_input = current_controller_input;
-
-      xSemaphoreGive(controller_input_semaphore);
-    }
-
-    waypoint wayp;
-    if (current_input_mode == dcont::ModeInput::Position &&
-        xSemaphoreTake(nav_mutex, 10)) {
-      wayp = nav_man.get_current_waypoint();
-
-      xSemaphoreGive(nav_mutex);
-    }
-    if (current_input_mode == dcont::ModeInput::Position &&
-        wayp.coords_in_axis == std::nullopt) {
-      drone_cont_stabilize();
-    } else {
-      auto coords = wayp.coords_in_axis.value_or(Eigen::Vector3f::Zero());
-
-      dcont::set_input(
-          drone_controller,
-          dcont::Input{.joystick = {.throttle_input = cont_input.ly,
-                                    .roll_input = cont_input.rx,
-                                    .yaw_input = cont_input.lx,
-                                    .pitch_input = cont_input.ry},
-                       .acceleration = {0.0, 0.0, 0.0},
-                       .rotation = {0.0, 0.0, 0.0},
-                       .velocity = {0.0, 0.0, 0.0},
-                       .position = {coords.x(), coords.y(), coords.z()},
-                       .mode = current_input_mode});
-    }
-
-    // memcpy(dcont::get_throttles(drone_controller).values, motor_throttles,
-    //        sizeof(motor_throttles));
+    drone_cont->update();
 
     vTaskDelay(pdMS_TO_TICKS(wait_ms));
   }
@@ -184,7 +119,12 @@ void motor_throttles_task(void *params) {
 
   while (true) {
     for (int i = 0; i < 4; i++) {
-      motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f);
+      float throttle = motor_throttles[i] * 100.0f * 0.7f;
+      if (atomic_load(&killswitch_active)) {
+        throttle = 0.0;
+      }
+      // motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f * 0.7f);
+      motors[i]->sendThrottlePercent(10.0f);
     }
     vTaskDelay(2);
   }

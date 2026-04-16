@@ -37,20 +37,20 @@ struct sens_fus_compl {
    * so at t=tau, were 63% of the way there
    * at t=3*tau, were 95% of the way there
    */
-  Eigen::Vector3f tau_gps_pos = {20.0f, 20.0f, INFINITY};
-  Eigen::Vector3f tau_gps_vel = {40.0f, 40.0f, INFINITY};
+  Eigen::Vector3f tau_gps_pos = {2.0f, 2.0f, INFINITY};
+  Eigen::Vector3f tau_gps_vel = {INFINITY, INFINITY, INFINITY};
 
-  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 15.0f};
-  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 30.0f};
+  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 10.0f};
+  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 10.0f};
 
-  float tau_yaw = 20.0f;
+  float tau_yaw = 10.0f; // Yaw remains a scalar
 
   Eigen::Matrix3f yaw_rotation_matrix = Eigen::Matrix3f::Identity().eval();
 
   void update_yaw_matrix() {
-    yaw_rotation_matrix =
-        Eigen::AngleAxisf(this->yaw_offset, Eigen::Vector3f::UnitZ())
-            .toRotationMatrix();
+    // yaw_rotation_matrix =
+    //     Eigen::AngleAxisf(this->yaw_offset, Eigen::Vector3f::UnitZ())
+    //         .toRotationMatrix();
   }
 
   void predict(float dt, Eigen::Vector3f accel) {
@@ -77,24 +77,23 @@ struct sens_fus_compl {
         alpha_pos.array() * gps_pos.array();
 
     // 2. Yaw Correction (only if moving > 1.0 m/s)
-    if (gps_vel.norm() > 1.0f) {
+    if (gps_vel.norm() > 0.2f) {
       Eigen::Vector3f delta_v_imu =
           this->velocity - this->velocity_last_gps_measurment;
       Eigen::Vector3f delta_v_gps = this->velocity - gps_vel;
 
-      if (abs(delta_v_gps.norm() - delta_v_imu.norm()) < 1.0 * dt) {
-        float yaw_delta = getYawDifference(delta_v_gps, delta_v_imu);
+      float yaw_delta = getYawDifference(delta_v_gps, delta_v_imu);
 
-        this->yaw_offset += yaw_delta * alpha_yaw;
+      this->yaw_offset += yaw_delta * alpha_yaw;
 
-        this->yaw_offset =
-            std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
-        this->update_yaw_matrix();
-      }
+      this->yaw_offset =
+          std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
+      this->update_yaw_matrix();
+
       this->velocity = (Eigen::Vector3f::Ones() - alpha_vel).array() *
                            this->velocity.array() +
                        alpha_vel.array() * gps_vel.array();
-    } else if (this->velocity.norm() > 1.0) {
+    } else if (this->velocity.norm() > 0.2f) {
       this->velocity *= 1 - (0.90 * dt);
     }
 

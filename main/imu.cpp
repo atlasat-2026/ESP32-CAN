@@ -1,5 +1,7 @@
 #include "imu.h"
+#include "Eigen/Geometry"
 #include "Esp.h"
+#include "drone_controller.h"
 
 #ifdef PS
 #undef PS
@@ -28,7 +30,7 @@ static const char *TAG = "IMU";
 #define IMU_MISO GPIO_NUM_5 // SDA
 #define IMU_SCLK GPIO_NUM_6 // SCL
 
-void setup_imu() {
+BNO08x *setup_imu() {
   imu_state *local_state = new imu_state;
   imu_state_mutex = xSemaphoreCreateMutex();
 
@@ -46,28 +48,39 @@ void setup_imu() {
   imu->dynamic_calibration_autosave_enable();
   imu->dynamic_calibration_enable(BNO08xCalSel::all);
 
-  imu->rpt.rv_game.enable(2500UL);
+  // imu->rpt.rv_game.enable(2500UL);
+  imu->rpt.rv.enable(2500UL);
+  // imu->rpt.cal_magnetometer.enable(10000UL);
   imu->rpt.linear_accelerometer.enable(2500UL);
+  // imu->rpt.accelerometer.enable(10000UL);
   imu->rpt.cal_gyro.enable(2500UL);
 
   imu->register_cb([imu, local_state]() {
-    ESP_LOGI("IMU", "CALLBACK");
+    // ESP_LOGI("IMU", "CALLBACK");
     bool needs_updating = false;
     if (sens_fus_mutex == NULL || imu_state_mutex == NULL)
       return;
 
-    if (imu->rpt.rv_game.has_new_data()) {
+    if (imu->rpt.rv.has_new_data()) {
 
       needs_updating = true;
 
-      auto sens_rot = imu->rpt.rv_game.get_quat();
-      auto sens_euler = imu->rpt.rv_game.get_euler();
-      local_state->rot = {sens_rot.i, sens_rot.j, sens_rot.k,
-                          sens_rot.real}; // FIXME: WRONG ROTATION
-      local_state->rot_euler = {sens_euler.x, -sens_euler.y, -sens_euler.z};
-      ESP_LOGI("IMU", "rot: roll %f, pitch %f, yaw %f",
-               local_state->rot_euler.x(), local_state->rot_euler.y(),
-               local_state->rot_euler.z());
+      auto sens_rot = imu->rpt.rv.get_quat();
+      auto sens_euler = imu->rpt.rv.get_euler();
+      local_state->rot =
+          Eigen::Quaternionf(sens_rot.real, sens_rot.i, sens_rot.j, sens_rot.k);
+
+      // Eigen::Quaternionf q_global_yaw(
+      //     Eigen::AngleAxisf(-M_PI / 2.0, Eigen::Vector3f::UnitZ()));
+      // local_state->rot = q_global_yaw * local_state->rot;
+
+      local_state->rot.normalize();
+
+      // {.i = sens_rot.i, .j = sens_rot.j, .k = sens_rot.k, .w =
+      // sens_rot.real}; local_state->rot_euler = {sens_euler.x, sens_euler.y,
+      // sens_euler.z}; ESP_LOGI("IMU", "rot: roll %f, pitch %f, yaw %f",
+      //          local_state->rot_euler.x(), local_state->rot_euler.y(),
+      //          local_state->rot_euler.z());
     }
 
     if (imu->rpt.cal_gyro.has_new_data()) {
@@ -75,23 +88,36 @@ void setup_imu() {
       needs_updating = true;
 
       auto cal_gyro = imu->rpt.cal_gyro.get();
-      local_state->angvel = {cal_gyro.x, -cal_gyro.y, -cal_gyro.z};
+      local_state->angvel = {cal_gyro.x, cal_gyro.y, cal_gyro.z};
     }
 
     if (imu->rpt.linear_accelerometer.has_new_data()) {
 
       needs_updating = true;
 
-      auto sens_accel = imu->rpt.linear_accelerometer.get();
-      local_state->accel = {sens_accel.x, -sens_accel.y, -sens_accel.z};
+      auto sens_accel_lin = imu->rpt.linear_accelerometer.get();
+      local_state->lin_accel = {sens_accel_lin.x, sens_accel_lin.y,
+                                sens_accel_lin.z};
+
+      // ESP_LOGI("IMU-ac", "lin_accel %f,%f,%f", sens_accel_lin.x,
+      //          sens_accel_lin.y, sens_accel_lin.z);
+
       int64_t current_time = esp_timer_get_time();
 
       if (local_state->last_time != -1) {
 
         float dt =
             ((float)(current_time - local_state->last_time)) / 1000000.0f;
+
+        dcont::QuatC quatc{.i = local_state->rot.x(),
+                           .j = local_state->rot.y(),
+                           .k = local_state->rot.z(),
+                           .w = local_state->rot.w()};
+
         dcont::Vec3C accel_global =
-            dcont::apply_rot(&local_state->accel, &local_state->rot);
+            dcont::apply_rot(&local_state->lin_accel, &quatc);
+
+        local_state->lin_accel_global = accel_global;
 
         if (xSemaphoreTake(sens_fus_mutex, (TickType_t)2) == pdTRUE) {
 
@@ -120,4 +146,5 @@ void setup_imu() {
   });
 
   ESP_LOGI(TAG, "IMU Setup Success.");
+  return imu;
 }

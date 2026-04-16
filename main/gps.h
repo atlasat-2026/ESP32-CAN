@@ -13,8 +13,7 @@
 #include "HardwareSerial.h"
 
 #include "esp_log.h"
-#include <Adafruit_GPS.h>
-#include <cmath>
+#include <Adafruit_GPS.h> #include <cmath>
 #include <optional>
 
 const float TO_RAD = M_PI / 180.0f;
@@ -91,10 +90,12 @@ struct GPS {
   }
 
   void poll() {
-    char c = this->gps->read();
+    for (int i = 0; i < 50; i++) {
+      char _ = this->gps->read();
+    }
     if (this->gps->newNMEAreceived()) {
       char *line = this->gps->lastNMEA();
-      ESP_LOGI("GPS", "NMEA LINE: %s", line);
+      // ESP_LOGI("GPS", "NMEA LINE: %s", line);
       this->gps->parse(line);
     }
   }

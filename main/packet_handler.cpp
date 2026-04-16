@@ -42,26 +42,20 @@ void handle_packet(uint8_t *packet_addr) {
            packet_type <= PACKET_TYPE::DRONE_NAV_WAYPOINT_7) {
     uint8_t index = packet_type - PACKET_TYPE::DRONE_NAV_WAYPOINT_0;
     handle_waypoint_update(packet_addr, index);
+
   } else if (packet_type == PACKET_TYPE::DRONE_NAV) {
     handle_nav_update(packet_addr);
+
   } else if (packet_type == PACKET_TYPE::KILLSWITCH_TOGGLE) {
     packet_killswitch_toggle *packet =
         (packet_killswitch_toggle *)(packet_addr + sizeof(PACKET_TYPE));
     killswitch_active = packet->killswitch_active;
+
   } else if (packet_type == PACKET_TYPE::MODE_INPUT) {
     packet_mode_input *packet =
         (packet_mode_input *)(packet_addr + sizeof(PACKET_TYPE));
-    switch (packet->input_type) {
-    case INPUT_TYPE::ACRO:
-      current_input_mode = dcont::ModeInput::Acro;
-      break;
-    case INPUT_TYPE::LEVEL:
-    case INPUT_TYPE::STABILIZE_FALL:
-      ESP_LOGE("PACKET_HANDLER",
-               "INPUT TYPES NOT IMPLEMENTED. DEFAULTING TO POSITION (AUTONAV)");
-    case INPUT_TYPE::AUTO_NAV:
-      current_input_mode = dcont::ModeInput::Position;
-    }
+    atomic_store(&drone_cont->current_input_mode, packet->input_type);
+
   } else if (packet_type == PACKET_TYPE::CONTROLLER_INPUT) {
     packet_controller_input *packet =
         (packet_controller_input *)(packet_addr + sizeof(PACKET_TYPE));
@@ -104,16 +98,19 @@ void send_packet_getter(PACKET_TYPE requested_type) {
   std::pair<uint8_t *, size_t> resp_packet = {nullptr, 0};
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_POSITION) {
-    // TODO: send pitch, roll, yaw
+
+    Eigen::Vector3f local_vel = imu_state_var.rot.inverse() * sens_fus.velocity;
+
     resp_packet = create_packet_pooled(
         PACKET_TYPE::INFO_DRONE_POSITION,
         packet_info_drone_position{
             .trans = {sens_fus.position.x(), sens_fus.position.y(),
                       sens_fus.position.z()},
-            .vel = {sens_fus.velocity.x(), sens_fus.velocity.y(),
-                    sens_fus.velocity.z()},
-            .rot = {imu_state_var.rot_euler.x(), imu_state_var.rot_euler.y(),
-                    imu_state_var.rot_euler.z()},
+            .accel = {imu_state_var.lin_accel.x, imu_state_var.lin_accel.y,
+                      imu_state_var.lin_accel.z},
+            .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
+            .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
+                    imu_state_var.rot.y(), imu_state_var.rot.z()},
             .pressure = env_sens::get_pressure(),
             .temperature = env_sens::get_temperature()});
   }
@@ -126,7 +123,11 @@ void send_packet_getter(PACKET_TYPE requested_type) {
       resp_packet = create_packet_pooled(
           PACKET_TYPE::INFO_DRONE_STATUS,
           packet_info_drone_status{
-              {gps->origin_long, gps->origin_lat}, millis(), 0});
+              .origin = {gps->origin_long, gps->origin_lat},
+              .time_since_boot = millis(),
+              .unix_timestamp_millis = 0,
+              .gps_fix = gps->gps_avaliable()});
+      ESP_LOGI("STATUS", "Status sent");
       xSemaphoreGive(gps_mutex);
     }
   }

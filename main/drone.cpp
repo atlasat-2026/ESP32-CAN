@@ -8,7 +8,9 @@
 #include "drone_controller.h"
 
 #include "dshot_definitions.h"
-#include "esp32-hal.h" #include "esp_log.h" #include "freertos/FreeRTOS.h"
+#include "esp32-hal.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
@@ -40,7 +42,7 @@ dcont::ControllerConfig default_config() {
 
   // Velocity Loop (Velocity -> Acceleration/Rotation)
   config.stack.linvel_pid = {.kp = {1.0f, 1.0f, 1.0f},
-                             .ki = {0.0f, 0.0f, 0.0f},
+                             .ki = {0.01f, 0.01f, 0.01f},
                              .kd = {0.0f, 0.0f, 0.0f},
                              .frequency = 50.0f};
   // Rotation Loop (Rotation/Accel -> Angular Rate)

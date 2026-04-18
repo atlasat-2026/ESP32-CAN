@@ -1,5 +1,7 @@
+#include "Eigen/Core"
 #include "driver/gpio.h"
-#include "drone.h" #include "drone_comms.h"
+#include "drone.h"
+#include "drone_comms.h"
 #include "drone_controller.h"
 #include "esp32-hal.h"
 #include "esp_log.h"
@@ -8,6 +10,7 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 
@@ -33,15 +36,15 @@ extern "C" void app_main(void) {
   gpio_install_isr_service(0);
   Serial.begin(115200);
 
-  // xTaskCreatePinnedToCore(radio_task,   // Function name
-  //                         "radio_rxtx", // Name for debugging
-  //                         4096,         // Stack size in bytes
-  //                         NULL,         // Parameters
-  //                         5,            // Priority (higher = more urgent)
-  //                         NULL,         // Task handle
-  //                         0             // Core ID
-  // );
-  //
+  xTaskCreatePinnedToCore(radio_task,   // Function name
+                          "radio_rxtx", // Name for debugging
+                          4096,         // Stack size in bytes
+                          NULL,         // Parameters
+                          5,            // Priority (higher = more urgent)
+                          NULL,         // Task handle
+                          0             // Core ID
+  );
+
   xTaskCreatePinnedToCore(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 5,
                           NULL, 0);
 
@@ -98,6 +101,24 @@ extern "C" void app_main(void) {
       last_status_broadcast_time = millis();
     }
 
+    if (nav_mutex && xSemaphoreTake(nav_mutex, 10)) {
+
+      if (gps->gps_avaliable()) {
+        waypoint current_wayp = nav_man.get_current_waypoint();
+        auto pos = sens_fus.position;
+
+        if ((current_wayp.coords_in_axis.value_or(
+                 Eigen::Vector3f(INFINITY, INFINITY, INFINITY)) -
+             pos)
+                .norm() < 1.0) {
+          nav_man.waypoint_reached();
+        }
+      }
+
+      xSemaphoreGive(nav_mutex);
+    }
+
+    // Release
     if (imu_state_var.lin_accel_global.z < -8.0 && !released) {
       released = true;
       time_activation_queue = millis();

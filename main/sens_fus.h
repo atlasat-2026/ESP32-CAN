@@ -37,8 +37,8 @@ struct sens_fus_compl {
     this->velocity_error = Eigen::Vector3f::Zero();
   }
 
-  Eigen::Vector3f velocity_error_mult = {40.0f, 40.0f, 0.0f};
-  Eigen::Vector3f position_error_mult = {40.0f, 40.0f, 0.0f};
+  Eigen::Vector3f velocity_error_mult = {0.1f, 0.1f, 0.0f};
+  Eigen::Vector3f position_error_mult = {0.1f, 0.1f, 0.0f};
 
   /*
    * Tau is the time that the filter takes to reach 1-e^(-1) of the difference
@@ -46,10 +46,10 @@ struct sens_fus_compl {
    * so at t=tau, were 63% of the way there
    * at t=3*tau, were 95% of the way there
    */
-  Eigen::Vector3f tau_gps_pos = {4.0f, 4.0f, INFINITY};
+  Eigen::Vector3f tau_gps_pos = {4.0f, 4.0f, 10.0};
   Eigen::Vector3f tau_gps_vel = {4.0f, 4.0f, INFINITY};
 
-  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 4.0f};
+  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, INFINITY};
   Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 4.0f};
 
   Eigen::Matrix3f yaw_rotation_matrix = Eigen::Matrix3f::Identity().eval();
@@ -57,16 +57,16 @@ struct sens_fus_compl {
   void predict(float dt, Eigen::Vector3f accel) {
     Eigen::Vector3f accel_err_rmvd =
         accel.array() -
-        this->velocity_error.array() * this->velocity_error_mult.array();
+        (this->velocity_error.array() * this->velocity_error_mult.array()) / dt;
 
     Eigen::Vector3f next_velocity =
         this->velocity + (this->last_accel_world + accel_err_rmvd) * 0.5f * dt;
 
-    this->position =
-        this->position.array() +
-        (((this->velocity + next_velocity) * 0.5f).array() -
-         this->position_error.array() * this->position_error_mult.array()) *
-            dt;
+    this->position = this->position.array() +
+                     (((this->velocity + next_velocity) * 0.5f).array() -
+                      (this->position_error.array() *
+                       this->position_error_mult.array() / dt)) *
+                         dt;
 
     this->velocity = next_velocity;
     this->last_accel_world = accel_err_rmvd;

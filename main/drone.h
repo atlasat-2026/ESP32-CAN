@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nav.h"
+
 #include "esp32-hal.h"
 #include <atomic>
 #include <cmath>
@@ -21,11 +23,12 @@
 #include "packet_handler.h"
 
 #include "imu.h"
-#include "nav.h"
 #include "packet_handler.h"
 #include "sens_fus.h"
 
 #define CONNECTION_LOST_THRESHOLD 200
+
+#define MAX_LANDING_LINVEL 1.0
 
 void setup_drone();
 
@@ -178,6 +181,9 @@ struct drone_cont_state {
         drone_cont_stabilize();
       } else if (xSemaphoreTake(nav_mutex, 10)) {
         waypoint wayp = nav_man.get_current_waypoint();
+        if (nav_man.current_waypoint == 8) {
+          dcont::set_max_linvel(this->drone_controller, MAX_LANDING_LINVEL);
+        }
 
         xSemaphoreGive(nav_mutex);
         if (wayp.coords_in_axis == std::nullopt) {

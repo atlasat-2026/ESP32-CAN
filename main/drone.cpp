@@ -8,9 +8,7 @@
 #include "drone_controller.h"
 
 #include "dshot_definitions.h"
-#include "esp32-hal.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
+#include "esp32-hal.h" #include "esp_log.h" #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
@@ -123,8 +121,7 @@ void motor_throttles_task(void *params) {
       if (atomic_load(&killswitch_active)) {
         throttle = 0.0;
       }
-      // motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f * 0.7f);
-      motors[i]->sendThrottlePercent(10.0f);
+      motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f * 0.7f);
     }
     vTaskDelay(2);
   }

@@ -59,6 +59,7 @@ void radio_task(void *pvParameters) {
   RFM69 radio(RFM69_CS, RFM69_INT, true, &hspi);
 
   if (radio.initialize(FREQUENCY, NODEID, NETWORKID)) {
+    radio.setPowerLevel(31);
     radio.setHighPower(true);
     radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
     ESP_LOGI(TAG, "Radio Initialized. Version: 0x%02X", radio.readReg(0x10));

@@ -14,7 +14,8 @@
 #include "HardwareSerial.h"
 
 #include "esp_log.h"
-#include <Adafruit_GPS.h> #include <cmath>
+#include <Adafruit_GPS.h>
+#include <cmath>
 #include <ctime>
 #include <optional>
 

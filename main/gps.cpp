@@ -2,6 +2,7 @@
 
 #include "esp32-hal.h"
 #include "esp_log.h"
+#include "freertos/idf_additions.h"
 #include "sens_fus.h"
 #include <cstdint>
 
@@ -16,7 +17,6 @@ void gps_poll_task(void *_) {
 
   uint64_t last_time = millis();
   while (true) {
-    bool has_new_data = false;
     bool available = false;
     Eigen::Vector2f local_vel = Eigen::Vector2f::Zero();
     std::optional<Eigen::Vector3f> local_coords;
@@ -25,30 +25,37 @@ void gps_poll_task(void *_) {
       gps->poll();
 
       if (gps->gps_avaliable()) {
-        available = true;
         local_vel = gps->velocity().value_or(Eigen::Vector2f::Zero());
         local_coords = gps->get_coordinates();
+
+        available = local_coords.has_value();
       }
       xSemaphoreGive(gps_mutex);
 
-      has_new_data = local_coords.has_value();
     } else {
       ESP_LOGE(TAG, "FAILED TO GET GPS MUTEX");
     }
 
-    if (has_new_data && available && sens_fus_mutex) {
+    if (sens_fus_mutex) {
+      if (available) {
 
-      uint64_t current_time = millis();
-      if (xSemaphoreTake(sens_fus_mutex, 50) == pdTRUE) {
-        sens_fus.measure_gps(
-            (current_time - last_time) / 1000.0f, local_coords.value(),
-            Eigen::Vector3f(local_vel.x(), local_vel.y(), 0.0f));
+        uint64_t current_time = millis();
+        if (xSemaphoreTake(sens_fus_mutex, 50) == pdTRUE) {
+          sens_fus.measure_gps(
+              (current_time - last_time) / 1000.0f, local_coords.value(),
+              Eigen::Vector3f(local_vel.x(), local_vel.y(), 0.0f));
 
-        xSemaphoreGive(sens_fus_mutex);
-        last_time = current_time;
+          xSemaphoreGive(sens_fus_mutex);
+          last_time = current_time;
+        } else {
+
+          ESP_LOGE(TAG, "Sens_fus busy, skipping GPS update.");
+        }
       } else {
-
-        ESP_LOGE(TAG, "Sens_fus busy, skipping GPS update.");
+        if (xSemaphoreTake(sens_fus_mutex, 50) == pdTRUE) {
+          sens_fus.gps_lost();
+          xSemaphoreGive(sens_fus_mutex);
+        }
       }
     }
 

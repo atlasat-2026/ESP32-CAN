@@ -20,7 +20,7 @@ Adafruit_Sensor *bme_humidity = bme.getHumiditySensor();
 
 static const constexpr char *TAG = "BARO";
 
-#define BARO_SDA GPIO_NUM_47
+#define BARO_SDA GPIO_NUM_47 // SDI
 #define BARO_SCL GPIO_NUM_48
 
 namespace env_sens {
@@ -141,7 +141,7 @@ void baro_poll_task(void *_) {
       last_time = now;
     }
 
-    // BME280 in your config has a 10ms standby, so 20ms-50ms poll is ideal
+    // BME280 config has a 20ms standby, so 20ms-50ms poll is ideal
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }

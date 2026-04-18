@@ -106,35 +106,31 @@ void send_packet_getter(PACKET_TYPE requested_type) {
         packet_info_drone_position{
             .trans = {sens_fus.position.x(), sens_fus.position.y(),
                       sens_fus.position.z()},
-            .accel = {imu_state_var.lin_accel.x, imu_state_var.lin_accel.y,
-                      imu_state_var.lin_accel.z},
+            .accel = {imu_state_var.lin_accel_global.x,
+                      imu_state_var.lin_accel_global.y,
+                      imu_state_var.lin_accel_global.z},
             .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
             .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
                     imu_state_var.rot.y(), imu_state_var.rot.z()},
-            .pressure = env_sens::get_pressure(),
-            .temperature = env_sens::get_temperature()});
+            .angvel = {imu_state_var.angvel.x(), imu_state_var.angvel.y(),
+                       imu_state_var.angvel.z()}});
   }
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {
-
-    if (gps_mutex && xSemaphoreTake(gps_mutex, portMAX_DELAY) == pdTRUE) {
-
-      // TODO: Absolute time from GPS instead of 0
+    if (gps_mutex && xSemaphoreTake(gps_mutex, portMAX_DELAY)) {
       resp_packet = create_packet_pooled(
           PACKET_TYPE::INFO_DRONE_STATUS,
           packet_info_drone_status{
               .origin = {gps->origin_long, gps->origin_lat},
               .time_since_boot = millis(),
-              .unix_timestamp_millis = 0,
+              .unix_timestamp_millis = gps->unix_timestamp_millis(),
               .gps_fix = gps->gps_avaliable()});
-      ESP_LOGI("STATUS", "Status sent");
       xSemaphoreGive(gps_mutex);
     }
   }
 
   // Navigation
   if (requested_type == PACKET_TYPE::DRONE_NAV) {
-
     uint8_t active_mask, current;
     if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
       active_mask = nav_man.get_active_mask();

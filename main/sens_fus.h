@@ -27,9 +27,18 @@ inline float getYawDifference(const Eigen::Vector3f &v_gps,
 struct sens_fus_compl {
   Eigen::Vector3f position = Eigen::Vector3f::Zero();
   Eigen::Vector3f velocity = Eigen::Vector3f::Zero();
-  Eigen::Vector3f velocity_last_gps_measurment = Eigen::Vector3f::Zero();
   Eigen::Vector3f last_accel_world = Eigen::Vector3f::Zero();
-  float yaw_offset = 0.0f;
+
+  Eigen::Vector3f velocity_error = Eigen::Vector3f::Zero();
+  Eigen::Vector3f position_error = Eigen::Vector3f::Zero();
+
+  void gps_lost() {
+    this->position_error = Eigen::Vector3f::Zero();
+    this->velocity_error = Eigen::Vector3f::Zero();
+  }
+
+  Eigen::Vector3f velocity_error_mult = {40.0f, 40.0f, 0.0f};
+  Eigen::Vector3f position_error_mult = {40.0f, 40.0f, 0.0f};
 
   /*
    * Tau is the time that the filter takes to reach 1-e^(-1) of the difference
@@ -37,67 +46,48 @@ struct sens_fus_compl {
    * so at t=tau, were 63% of the way there
    * at t=3*tau, were 95% of the way there
    */
-  Eigen::Vector3f tau_gps_pos = {2.0f, 2.0f, INFINITY};
-  Eigen::Vector3f tau_gps_vel = {INFINITY, INFINITY, INFINITY};
+  Eigen::Vector3f tau_gps_pos = {4.0f, 4.0f, INFINITY};
+  Eigen::Vector3f tau_gps_vel = {4.0f, 4.0f, INFINITY};
 
-  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 10.0f};
-  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 10.0f};
-
-  float tau_yaw = 10.0f; // Yaw remains a scalar
+  Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, 4.0f};
+  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 4.0f};
 
   Eigen::Matrix3f yaw_rotation_matrix = Eigen::Matrix3f::Identity().eval();
 
-  void update_yaw_matrix() {
-    // yaw_rotation_matrix =
-    //     Eigen::AngleAxisf(this->yaw_offset, Eigen::Vector3f::UnitZ())
-    //         .toRotationMatrix();
-  }
-
   void predict(float dt, Eigen::Vector3f accel) {
-    Eigen::Vector3f accel_rotated = yaw_rotation_matrix * accel;
+    Eigen::Vector3f accel_err_rmvd =
+        accel.array() -
+        this->velocity_error.array() * this->velocity_error_mult.array();
 
     Eigen::Vector3f next_velocity =
-        this->velocity + (this->last_accel_world + accel_rotated) * 0.5f * dt;
+        this->velocity + (this->last_accel_world + accel_err_rmvd) * 0.5f * dt;
 
-    this->position += (this->velocity + next_velocity) * 0.5f * dt;
+    this->position =
+        this->position.array() +
+        (((this->velocity + next_velocity) * 0.5f).array() -
+         this->position_error.array() * this->position_error_mult.array()) *
+            dt;
 
     this->velocity = next_velocity;
-    this->last_accel_world = accel_rotated;
+    this->last_accel_world = accel_err_rmvd;
   }
 
   void measure_gps(float dt, Eigen::Vector3f gps_pos, Eigen::Vector3f gps_vel) {
     // alpha = dt / (tau + dt)
     Eigen::Vector3f alpha_pos = dt / (tau_gps_pos.array() + dt);
     Eigen::Vector3f alpha_vel = dt / (tau_gps_vel.array() + dt);
-    float alpha_yaw = dt / (tau_yaw + dt);
 
-    // res = (1 - alpha) * state + alpha * measurement
+    this->velocity_error = this->velocity - gps_vel;
+    this->position_error = this->position - gps_pos;
+
+    // next_state = (1 - alpha) * state + alpha * measurement
     this->position =
         (Eigen::Vector3f::Ones() - alpha_pos).array() * this->position.array() +
         alpha_pos.array() * gps_pos.array();
 
-    // 2. Yaw Correction (only if moving > 1.0 m/s)
-    if (gps_vel.norm() > 0.2f) {
-      Eigen::Vector3f delta_v_imu =
-          this->velocity - this->velocity_last_gps_measurment;
-      Eigen::Vector3f delta_v_gps = this->velocity - gps_vel;
-
-      float yaw_delta = getYawDifference(delta_v_gps, delta_v_imu);
-
-      this->yaw_offset += yaw_delta * alpha_yaw;
-
-      this->yaw_offset =
-          std::atan2(std::sin(this->yaw_offset), std::cos(this->yaw_offset));
-      this->update_yaw_matrix();
-
-      this->velocity = (Eigen::Vector3f::Ones() - alpha_vel).array() *
-                           this->velocity.array() +
-                       alpha_vel.array() * gps_vel.array();
-    } else if (this->velocity.norm() > 0.2f) {
-      this->velocity *= 1 - (0.90 * dt);
-    }
-
-    this->velocity_last_gps_measurment = this->velocity;
+    this->velocity =
+        (Eigen::Vector3f::Ones() - alpha_vel).array() * this->velocity.array() +
+        alpha_vel.array() * gps_vel.array();
   }
 
   void measure_baro(float dt, Eigen::Vector3f baro_pos,

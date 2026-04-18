@@ -15,12 +15,13 @@
 
 // Right to left on hardware.
 
-#define RFM69_MOSI GPIO_NUM_12
-#define RFM69_SCLK GPIO_NUM_11 // SCK
-#define RFM69_MISO GPIO_NUM_13
-#define RFM69_CS GPIO_NUM_9  // NSS
 #define RFM69_INT GPIO_NUM_8 // DI0
+#define RFM69_CS GPIO_NUM_9  // NSS
 #define RFM69_RST GPIO_NUM_10
+
+#define RFM69_SCLK GPIO_NUM_11 // SCK
+#define RFM69_MOSI GPIO_NUM_12
+#define RFM69_MISO GPIO_NUM_13
 
 #define FREQUENCY RF69_433MHZ
 #define NODEID 1

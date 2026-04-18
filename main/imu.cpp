@@ -22,13 +22,13 @@
 
 static const char *TAG = "IMU";
 
-#define IMU_CS GPIO_NUM_3
-#define IMU_MOSI GPIO_NUM_2 // DI
-#define IMU_RST GPIO_NUM_1
+#define IMU_CS GPIO_NUM_3   // Green
+#define IMU_MOSI GPIO_NUM_2 // DI - White
+#define IMU_RST GPIO_NUM_1  // Red
 
-#define IMU_INT GPIO_NUM_4
-#define IMU_MISO GPIO_NUM_5 // SDA
-#define IMU_SCLK GPIO_NUM_6 // SCL
+#define IMU_INT GPIO_NUM_4  // Yellow
+#define IMU_MISO GPIO_NUM_5 // SDA - White
+#define IMU_SCLK GPIO_NUM_6 // SCL - Green
 
 BNO08x *setup_imu() {
   imu_state *local_state = new imu_state;

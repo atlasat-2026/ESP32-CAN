@@ -123,7 +123,7 @@ struct GPS {
     }
     if (this->gps->newNMEAreceived()) {
       char *line = this->gps->lastNMEA();
-      ESP_LOGI("GPS", "NMEA LINE: %s", line);
+      // ESP_LOGI("GPS", "NMEA LINE: %s", line);
       this->gps->parse(line);
     }
   }

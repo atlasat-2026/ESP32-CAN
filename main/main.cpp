@@ -42,8 +42,8 @@ extern "C" void app_main(void) {
   //                         0             // Core ID
   // );
   //
-  // xTaskCreatePinnedToCore(env_sens::baro_poll_task, "baro_poll", 8192, NULL,
-  // 5, NULL, 0);
+  xTaskCreatePinnedToCore(env_sens::baro_poll_task, "baro_poll", 8192, NULL, 5,
+                          NULL, 0);
 
   xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
 

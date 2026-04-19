@@ -143,6 +143,12 @@ void send_packet_getter(PACKET_TYPE requested_type) {
     }
   }
 
+  if (requested_type == PACKET_TYPE::KILLSWITCH_TOGGLE) {
+    bool value = atomic_load(&killswitch_active);
+    resp_packet = create_packet_pooled(PACKET_TYPE::KILLSWITCH_TOGGLE,
+                                       packet_killswitch_toggle{value});
+  }
+
   if (requested_type >= PACKET_TYPE::DRONE_NAV_WAYPOINT_0 &&
       requested_type <= PACKET_TYPE::DRONE_NAV_WAYPOINT_7) {
     uint8_t index = requested_type - PACKET_TYPE::DRONE_NAV_WAYPOINT_0;

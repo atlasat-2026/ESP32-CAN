@@ -152,7 +152,7 @@ struct drone_cont_state {
 
   void update_input() {
 
-    packet_controller_input cont_input;
+    packet_controller_input c;
 
     switch (atomic_load(&this->current_input_mode)) {
     case INPUT_TYPE::ACRO: {
@@ -160,21 +160,21 @@ struct drone_cont_state {
         // if (millis() - time_last_controller > CONNECTION_LOST_THRESHOLD) {
         //   current_controller_input = {0, 0, 0, 0};
         // }
-        cont_input = current_controller_input;
+        c = current_controller_input;
 
         xSemaphoreGive(controller_input_semaphore);
 
         dcont::set_input(
             drone_controller,
-            dcont::Input{.joystick = {.throttle_input = cont_input.ly,
-                                      .roll_input = cont_input.rx,
-                                      .yaw_input = cont_input.lx,
-                                      .pitch_input = cont_input.ry},
+            dcont::Input{.joystick = {.throttle_input = c.ly,
+                                      .roll_input = c.rx,
+                                      .yaw_input = c.lx,
+                                      .pitch_input = c.ry},
                          .acceleration = {0.0, 0.0, 0.0},
-                         .rotation = {0.0, 0.0, 0.0},
+                         .rotation = {c.ry * 3, c.rx * 3, c.lx * 3},
                          .velocity = {0.0, 0.0, 0.0},
                          .position = {0.0, 0.0, 0.0},
-                         .mode = dcont::ModeInput::Acro});
+                         .mode = dcont::ModeInput::Rotation});
       } else {
         drone_cont_stabilize();
       }

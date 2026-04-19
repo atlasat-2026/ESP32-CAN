@@ -68,6 +68,7 @@ dcont::ControllerConfig default_config() {
 
   float mixer[4][3] = {
       // x, y, z
+      //
 
       {-1.0, -1.0, -1.0}, // Rear Right
       {-1.0, 1.0, 1.0},   // Rear Left
@@ -118,6 +119,15 @@ void motor_throttles_task(void *params) {
   while (millis() - armTime < 5000) {
     for (int i = 0; i < 4; i++) {
       motors[i]->sendThrottlePercent(0);
+    }
+    vTaskDelay(2);
+  }
+
+  unsigned long armTime_sec = millis();
+  while (millis() - armTime_sec < 1000) {
+    for (int i = 0; i < 4; i++) {
+      motors[i]->sendThrottlePercent(20 * (millis() - armTime_sec) /
+                                     armTime_sec);
     }
     vTaskDelay(2);
   }

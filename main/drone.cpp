@@ -129,7 +129,7 @@ void motor_throttles_task(void *params) {
       if (atomic_load(&killswitch_active)) {
         throttle = 0.0;
       }
-      motors[i]->sendThrottlePercent(throttle);
+      motors[i]->sendThrottlePercent(5.0);
     }
     vTaskDelay(2);
   }

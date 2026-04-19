@@ -49,15 +49,6 @@ extern "C" void app_main(void) {
 
   xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
 
-  xTaskCreatePinnedToCore(drone_controller_task,   // Function name
-                          "drone_controller_task", // Name for debugging
-                          1024 * 32,               // Stack size in bytes
-                          NULL,                    // Parameters
-                          20,   // Priority (higher = more urgent)
-                          NULL, // Task handle
-                          1     // Core ID
-  );
-
   xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
                           "motor_throttles_task", // Name for debugging
                           1024 * 4,               // Stack size in bytes
@@ -65,6 +56,17 @@ extern "C" void app_main(void) {
                           24,   // Priority (higher = more urgent)
                           NULL, // Task handle
                           1     // Core ID
+  );
+
+  vTaskDelay(2);
+
+  xTaskCreatePinnedToCore(drone_controller_task,   // Function name
+                          "drone_controller_task", // Name for debugging
+                          1024 * 32,               // Stack size in bytes
+                          NULL,                    // Parameters
+                          20,   // Priority (higher = more urgent)
+                          NULL, // Task handle
+                          0     // Core ID
   );
 
   // vTaskDelay(5000);

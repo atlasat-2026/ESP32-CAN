@@ -13,6 +13,7 @@
 #include "portmacro.h"
 #include "radio.h"
 #include "sens_fus.h"
+#include <atomic>
 #include <cstdint>
 #include <sys/unistd.h>
 
@@ -49,7 +50,10 @@ void handle_packet(uint8_t *packet_addr) {
   } else if (packet_type == PACKET_TYPE::KILLSWITCH_TOGGLE) {
     packet_killswitch_toggle *packet =
         (packet_killswitch_toggle *)(packet_addr + sizeof(PACKET_TYPE));
-    killswitch_active = packet->killswitch_active;
+    std::atomic_store(&killswitch_active, packet->killswitch_active);
+    ESP_LOGI("RADIO_RX", "KILLSWITCH PAACKET");
+    ESP_LOGE("switch_set", "killswitch set to: %d, packet: %d",
+             atomic_load(&killswitch_active), packet->killswitch_active);
 
   } else if (packet_type == PACKET_TYPE::MODE_INPUT) {
     packet_mode_input *packet =
@@ -106,9 +110,6 @@ void send_packet_getter(PACKET_TYPE requested_type) {
         packet_info_drone_position{
             .trans = {sens_fus.position.x(), sens_fus.position.y(),
                       sens_fus.position.z()},
-            .accel = {imu_state_var.lin_accel_global.x,
-                      imu_state_var.lin_accel_global.y,
-                      imu_state_var.lin_accel_global.z},
             .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
             .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
                     imu_state_var.rot.y(), imu_state_var.rot.z()},
@@ -147,14 +148,16 @@ void send_packet_getter(PACKET_TYPE requested_type) {
     uint8_t index = requested_type - PACKET_TYPE::DRONE_NAV_WAYPOINT_0;
 
     Eigen::Vector3f coords;
+    bool land = false;
     if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
       coords = nav_man.waypoints[index].coords;
+      land = nav_man.waypoints[index].landing;
       xSemaphoreGive(nav_mutex);
     }
 
     resp_packet = create_packet_pooled(
         requested_type,
-        packet_drone_nav_waypoint{{coords[0], coords[1], coords[2]}});
+        packet_drone_nav_waypoint{{coords[0], coords[1], coords[2]}, land});
   }
 
   if (resp_packet.first != nullptr) {

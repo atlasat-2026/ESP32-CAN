@@ -3,8 +3,7 @@
 #include "drone.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
-#include "esp32-hal.h"
-#include "esp_log.h"
+#include "esp32-hal.h" #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
@@ -21,10 +20,11 @@
 #include "packet_handler.h"
 #include "radio.h"
 #include "sens_fus.h"
+#include "servo.h"
 
 static const char *TAG = "MAIN";
 
-#define TIME_RELEASE_QUEUE_TO_ACTIVATION 1000
+#define TIME_RELEASE_QUEUE_TO_ACTIVATION 500
 
 extern "C" void app_main(void) {
 
@@ -59,16 +59,17 @@ extern "C" void app_main(void) {
   //                         1     // Core ID
   // );
 
-  // xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
-  //                         "motor_throttles_task", // Name for debugging
-  //                         1024 * 4,               // Stack size in bytes
-  //                         NULL,                   // Parameters
-  //                         24,   // Priority (higher = more urgent)
-  //                         NULL, // Task handle
-  //                         1     // Core ID
-  // );
+  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
+                          "motor_throttles_task", // Name for debugging
+                          1024 * 4,               // Stack size in bytes
+                          NULL,                   // Parameters
+                          24,   // Priority (higher = more urgent)
+                          NULL, // Task handle
+                          1     // Core ID
+  );
 
   setup_imu();
+  servo_init();
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
@@ -83,7 +84,7 @@ extern "C" void app_main(void) {
 
   while (true) {
     while (packet_rx_queue &&
-           xQueueReceive(packet_rx_queue, &packet_data[0], 1)) {
+           xQueueReceive(packet_rx_queue, &packet_data[0], 20)) {
       handle_packet(&packet_data[0]);
     }
 
@@ -124,15 +125,20 @@ extern "C" void app_main(void) {
       time_activation_queue = millis();
     }
 
-    if (released &&
+    if (released && drone_cont &&
         std::atomic_load(&drone_cont->current_input_mode) ==
             INPUT_TYPE::AUTO_NAV &&
         millis() - time_activation_queue > TIME_RELEASE_QUEUE_TO_ACTIVATION) {
 
       dcont::reset_pid_states(drone_cont->drone_controller);
-      std::atomic_store(&killswitch_active, false);
-      // std::atomic_store(&drone_cont->current_input_mode,
-      // INPUT_TYPE::AUTO_NAV);
+      servo_set(SERVO_OPTIONS::UP);
+
+      xTaskCreate(
+          [](void *pvParameters) {
+            vTaskDelay(pdMS_TO_TICKS(700));
+            std::atomic_store(&killswitch_active, false);
+          },
+          "lambda_task", 2048, NULL, 5, NULL);
     }
 
     // Logging
@@ -203,6 +209,6 @@ extern "C" void app_main(void) {
       //          imu_state_var.rot_euler.y(), imu_state_var.rot_euler.z());
     }
 
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(5));
   }
 }

@@ -18,8 +18,7 @@
 #include "nav.h"
 #include "packet_handler.h"
 #include "sens_fus.h"
-#include "soc/gpio_num.h"
-#include <cstdint>
+#include "soc/gpio_num.h" #include < cstdint>
 #include <cstring>
 #include <optional>
 #include <stdlib.h>
@@ -103,7 +102,7 @@ void motor_throttles_task(void *params) {
   motor_throttles = (float *)malloc(sizeof(float) * 4);
 
   for (int i = 0; i < 4; i++) {
-    motor_throttles[i] = 0;
+    motor_throttles[i] = 0.02;
     motors[i] = new DShotRMT(motor_pins[i], DSHOT300, false);
     motors[i]->begin();
   }
@@ -123,7 +122,7 @@ void motor_throttles_task(void *params) {
       if (atomic_load(&killswitch_active)) {
         throttle = 0.0;
       }
-      motors[i]->sendThrottlePercent(motor_throttles[i] * 100.0f * 0.7f);
+      motors[i]->sendThrottlePercent(throttle);
     }
     vTaskDelay(2);
   }

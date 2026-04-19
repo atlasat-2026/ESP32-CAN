@@ -1,11 +1,8 @@
+#include "servo.h"
 
 #include "driver/ledc.h"
-#include "esp_log_level.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <stdio.h>
-
-#include "esp_log.h"
 
 #define SERVO_PIN 7
 #define LEDC_TIMER LEDC_TIMER_0
@@ -39,13 +36,7 @@ void servo_init() {
 #define DUTY_CYCLE_DOWN 2000
 #define DUTY_CYCLE_UP 850
 
-enum SERVO_OPTIONS {
-  UP,
-  DOWN,
-  OFF,
-};
-
-void set_servo(SERVO_OPTIONS opt) {
+void servo_set(SERVO_OPTIONS opt) {
   switch (opt) {
   case UP:
     ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, us_to_duty(DUTY_CYCLE_UP));

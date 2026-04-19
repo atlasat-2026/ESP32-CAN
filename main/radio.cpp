@@ -61,7 +61,7 @@ void radio_task(void *pvParameters) {
   if (radio.initialize(FREQUENCY, NODEID, NETWORKID)) {
     radio.setPowerLevel(31);
     radio.setHighPower(true);
-    radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
+    // radio.setCustomBitrate(DEFAULT_COMMS_BITRATE);
     ESP_LOGI(TAG, "Radio Initialized. Version: 0x%02X", radio.readReg(0x10));
     radio.readAllRegsCompact();
 
@@ -102,6 +102,7 @@ void radio_task(void *pvParameters) {
         ESP_LOGI(TAG, "Datarate change requested: %d. Switching in 100ms...",
                  target_bitrate);
       } else {
+        ESP_LOGI(TAG, "RECVD PACKET");
         xQueueSend(packet_rx_queue, &packet_data[0], portMAX_DELAY);
       }
 
@@ -139,6 +140,6 @@ void radio_task(void *pvParameters) {
       confirmed_at_new_rate = false;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 }

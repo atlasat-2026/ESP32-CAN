@@ -9,8 +9,7 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include <atomic>
-#include <cmath>
-#include <cstdint>
+#include <cmath> #include <cstdint>
 #include <optional>
 
 #include "env_sens.h"
@@ -50,14 +49,14 @@ extern "C" void app_main(void) {
 
   xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
 
-  // xTaskCreatePinnedToCore(drone_controller_task,   // Function name
-  //                         "drone_controller_task", // Name for debugging
-  //                         1024 * 32,               // Stack size in bytes
-  //                         NULL,                    // Parameters
-  //                         20,   // Priority (higher = more urgent)
-  //                         NULL, // Task handle
-  //                         1     // Core ID
-  // );
+  xTaskCreatePinnedToCore(drone_controller_task,   // Function name
+                          "drone_controller_task", // Name for debugging
+                          1024 * 32,               // Stack size in bytes
+                          NULL,                    // Parameters
+                          20,   // Priority (higher = more urgent)
+                          NULL, // Task handle
+                          1     // Core ID
+  );
 
   xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
                           "motor_throttles_task", // Name for debugging
@@ -67,6 +66,25 @@ extern "C" void app_main(void) {
                           NULL, // Task handle
                           1     // Core ID
   );
+
+  // vTaskDelay(5000);
+  // for (int i = 0; i < 4; i++) {
+  //   motor_throttles[i] = 10.0;
+  //   vTaskDelay(2000);
+  //   motor_throttles[i] = 0.0;
+  // }
+
+  xTaskCreate(
+      [](void *pvParameters) {
+        while (true) {
+          while (packet_rx_queue &&
+                 xQueueReceive(packet_rx_queue, &packet_data[0], 20)) {
+            handle_packet(&packet_data[0]);
+          }
+          vTaskDelay(1);
+        }
+      },
+      "lambda_recv_task", 8192, NULL, 5, NULL);
 
   setup_imu();
   servo_init();
@@ -83,10 +101,6 @@ extern "C" void app_main(void) {
   bool released = false;
 
   while (true) {
-    while (packet_rx_queue &&
-           xQueueReceive(packet_rx_queue, &packet_data[0], 20)) {
-      handle_packet(&packet_data[0]);
-    }
 
     if (millis() > last_position_broadcast_time + 200 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_POSITION);

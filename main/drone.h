@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esp_log.h"
 #include "nav.h"
 
 #include "esp32-hal.h"
@@ -142,8 +143,11 @@ struct drone_cont_state {
   }
 
   void update_throttles() {
-    memcpy(dcont::get_throttles(drone_controller).values, motor_throttles,
-           sizeof(float) * 4);
+    auto thrt_var = dcont::get_throttles(drone_controller);
+    auto thrt = thrt_var.values;
+    memcpy(motor_throttles, thrt, sizeof(float) * 4);
+    // ESP_LOGI("CONT", "thr: %f, %f, %f, %f", thrt[0], thrt[1], thrt[2],
+    // thrt[3]); ESP_LOGE("CONT", "UPDATE THROTTLES");
   }
 
   void update_input() {
@@ -153,9 +157,9 @@ struct drone_cont_state {
     switch (atomic_load(&this->current_input_mode)) {
     case INPUT_TYPE::ACRO: {
       if (xSemaphoreTake(controller_input_semaphore, 10)) {
-        if (millis() - time_last_controller > CONNECTION_LOST_THRESHOLD) {
-          current_controller_input = {0, 0, 0, 0};
-        }
+        // if (millis() - time_last_controller > CONNECTION_LOST_THRESHOLD) {
+        //   current_controller_input = {0, 0, 0, 0};
+        // }
         cont_input = current_controller_input;
 
         xSemaphoreGive(controller_input_semaphore);

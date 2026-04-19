@@ -113,8 +113,7 @@ void send_packet_getter(PACKET_TYPE requested_type) {
             .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
             .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
                     imu_state_var.rot.y(), imu_state_var.rot.z()},
-            .angvel = {imu_state_var.angvel.x(), imu_state_var.angvel.y(),
-                       imu_state_var.angvel.z()}});
+        });
   }
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {

@@ -18,7 +18,9 @@
 #include "nav.h"
 #include "packet_handler.h"
 #include "sens_fus.h"
-#include "soc/gpio_num.h" #include < cstdint>
+#include "soc/gpio_num.h"
+#include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <optional>
 #include <stdlib.h>
@@ -65,11 +67,12 @@ dcont::ControllerConfig default_config() {
   config.max_torque = 0.5f; // Nm
 
   float mixer[4][3] = {
-      // roll, pitch, yaw
-      {-1.0, -1.0, -1.0}, // Front Left
-      {1.0, 1.0, -1.0},   // Rear Right
+      // x, y, z
+
+      {-1.0, -1.0, -1.0}, // Rear Right
       {-1.0, 1.0, 1.0},   // Rear Left
       {1.0, -1.0, 1.0},   // Front Right
+      {1.0, 1.0, -1.0},   // Front Left
   };
 
   for (int i = 0; i < 4; i++) {
@@ -90,12 +93,15 @@ void drone_controller_task(void *params) {
   while (true) {
     drone_cont->update();
 
-    vTaskDelay(pdMS_TO_TICKS(wait_ms));
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
 
 const gpio_num_t motor_pins[4] = {GPIO_NUM_46, GPIO_NUM_16, GPIO_NUM_14,
                                   GPIO_NUM_15};
+
+// const gpio_num_t motor_pins[4] = {GPIO_NUM_15, GPIO_NUM_14, GPIO_NUM_46,
+//                                   GPIO_NUM_16};
 
 DShotRMT *motors[4];
 void motor_throttles_task(void *params) {
@@ -118,7 +124,8 @@ void motor_throttles_task(void *params) {
 
   while (true) {
     for (int i = 0; i < 4; i++) {
-      float throttle = motor_throttles[i] * 100.0f * 0.7f;
+      float throttle =
+          std::clamp(motor_throttles[i], 0.0f, 1.0f) * 100.0f * 0.3f;
       if (atomic_load(&killswitch_active)) {
         throttle = 0.0;
       }

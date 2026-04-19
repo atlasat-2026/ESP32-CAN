@@ -89,6 +89,7 @@ BNO08x *setup_imu() {
 
       auto cal_gyro = imu->rpt.cal_gyro.get();
       local_state->angvel = {cal_gyro.x, cal_gyro.y, cal_gyro.z};
+      // ESP_LOGI("ROT", "angvel_z: %f", cal_gyro.z);
     }
 
     if (imu->rpt.linear_accelerometer.has_new_data()) {

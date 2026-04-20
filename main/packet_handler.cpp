@@ -65,7 +65,7 @@ void handle_packet(uint8_t *packet_addr) {
         (packet_controller_input *)(packet_addr + sizeof(PACKET_TYPE));
 
     if (xSemaphoreTake(controller_input_semaphore, 10)) {
-      // current_controller_input = *packet;
+      current_controller_input = *packet;
       time_last_controller = millis();
       xSemaphoreGive(controller_input_semaphore);
     }

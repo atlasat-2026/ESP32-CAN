@@ -99,7 +99,7 @@ extern "C" void app_main(void) {
   );
   servo_init();
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
-  ESP_LOGI("MAIN", "FLASHED");
+  ESP_LOGI("MAIN", "FLASHED2");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};
@@ -113,23 +113,11 @@ extern "C" void app_main(void) {
   bool active = false;
 
   while (true) {
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    current_controller_input.lx = 0;
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    current_controller_input.lx = M_PI / 2.0;
-  }
-
-  while (true) {
 
     if (millis() > last_position_broadcast_time + 200 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_POSITION);
-      // ESP_LOGI("RADIO_TX_INVOK", "INFO DRONE POSITION");
       last_position_broadcast_time = millis();
     }
-    // auto vel = sens_fus.velocity;
-    // ESP_LOGI("GPSvsIMU", "gps_vel: %f, imu_vel: %f",
-    //          gps->velocity().value().norm(),
-    //          Eigen::Vector3f(vel.x(), vel.y(), 0.0).norm());
 
     if (millis() > last_status_broadcast_time + 500 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_STATUS);

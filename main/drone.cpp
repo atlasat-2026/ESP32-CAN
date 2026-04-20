@@ -50,16 +50,16 @@ dcont::ControllerConfig default_config() {
 
   // Rotation Loop (Rotation/Accel -> Angular Rate)
   config.stack.rotation_pid = {
-      .kp = {30.0f, 40.0f, 1.0f},
-      .ki = {2.0f, 2.0f, 0.2f},
+      .kp = {0.05f, 0.05f, 1.0f},
+      .ki = {0.0f, 0.0f, 0.2f},
       .kd = {0.0f, 0.0f, 0.0f},
-      .integral_cap = {10.0f, 10.0f, 40.0f},
+      .integral_cap = {10.0f, 1.0f, 2.0f},
       .frequency = 200.0f,
   };
 
   // Rate Loop (Angular Rate -> Torque) - The "Inner" Loop
   config.stack.rate_pid = {
-      .kp = {0.0f, 0.0f, 2.0f},
+      .kp = {0.05f, 0.05f, 2.0f},
       .ki = {0.00f, 0.00f, 0.0f},
       .kd = {0.00f, 0.00f, 0.0f},
       .integral_cap = {1.0f, 1.0f, 1.0f},

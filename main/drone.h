@@ -153,32 +153,29 @@ struct drone_cont_state {
 
   void update_input() {
 
-    packet_controller_input cont_input;
+    packet_controller_input c;
 
     switch (atomic_load(&this->current_input_mode)) {
     case INPUT_TYPE::ACRO: {
       if (controller_input_semaphore &&
           xSemaphoreTake(controller_input_semaphore, 10)) {
-        cont_input = current_controller_input;
+        c = current_controller_input;
 
         xSemaphoreGive(controller_input_semaphore);
 
-        auto inp =
-            dcont::Input{.joystick = {.throttle_input = 0.5,
-                                      .roll_input = cont_input.rx,
-                                      .yaw_input = cont_input.lx,
-                                      .pitch_input = cont_input.ry},
-                         .acceleration = {0.0, 0.0, 0.0},
-                         .rotation = {0.0, 0.0, 0.0},
-                         .velocity = {2 * cont_input.rx, 2 * cont_input.ry,
-                                      2 * cont_input.ly},
-                         .position = {0.0, 0.0, 0.0},
-                         .mode = dcont::ModeInput::Rotation};
+        auto inp = dcont::Input{.joystick = {.throttle_input = c.ly,
+                                             .roll_input = c.rx,
+                                             .yaw_input = c.lx,
+                                             .pitch_input = c.ry},
+                                .acceleration = {0.0, 0.0, 0.0},
+                                .rotation = {-c.ry, c.rx, c.lx},
+                                .velocity = {0.0, 0.0, 0.0},
+                                .position = {0.0, 0.0, 0.0},
+                                .mode = dcont::ModeInput::Rotation};
 
         dcont::set_input(drone_controller, inp);
 
-        // ESP_LOGI("TEST", "(%f,%f), (%f,%f)", cont_input.lx, cont_input.ly,
-        //          cont_input.rx, cont_input.ry);
+        // ESP_LOGI("TEST", "(%f,%f), (%f,%f)", c.lx, c.ly, c.rx, c.ry);
 
       } else {
         ESP_LOGE("TAG", "ERRR");

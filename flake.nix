@@ -25,8 +25,15 @@
       devShells = forEachSupportedSystem ({ pkgs }: {
         default = pkgs.mkShell.override { } {
           packages = with pkgs;
-            [ esp-idf-full rustup openssl stdenv.cc.cc.lib libclang ]
-            ++ (if system == "aarch64-darwin" then [ ] else [ gdb ]);
+            [
+              esp-idf-full
+              rustup
+              openssl
+              stdenv.cc.cc.lib
+              libclang
+              (pkgs.python3.withPackages
+                (python-pkgs: with python-pkgs; [ pandas matplotlib ]))
+            ] ++ (if system == "aarch64-darwin" then [ ] else [ gdb ]);
           shellHook = ''
             export CLANGD_QUERY_DRIVER="$(which clang),$(which clang++)"
             export CMAKE_EXPORT_COMPILE_COMMANDS=1

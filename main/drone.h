@@ -48,6 +48,7 @@ dcont::ControllerConfig default_config();
 struct drone_cont_state {
   bool angvel_stablilized;
   bool fall_vel_stabilized;
+  dcont::Input last_input;
 
   Eigen::Vector3f pos;
   Eigen::Vector3f vel;
@@ -156,7 +157,8 @@ struct drone_cont_state {
 
     switch (atomic_load(&this->current_input_mode)) {
     case INPUT_TYPE::ACRO: {
-      if (xSemaphoreTake(controller_input_semaphore, 10)) {
+      if (controller_input_semaphore &&
+          xSemaphoreTake(controller_input_semaphore, 10)) {
         // if (millis() - time_last_controller > CONNECTION_LOST_THRESHOLD) {
         //   current_controller_input = {0, 0, 0, 0};
         // }
@@ -164,17 +166,19 @@ struct drone_cont_state {
 
         xSemaphoreGive(controller_input_semaphore);
 
-        dcont::set_input(
-            drone_controller,
-            dcont::Input{.joystick = {.throttle_input = cont_input.ly,
-                                      .roll_input = cont_input.rx,
-                                      .yaw_input = cont_input.lx,
-                                      .pitch_input = cont_input.ry},
-                         .acceleration = {0.0, 0.0, 0.0},
-                         .rotation = {1.0, 0.0, 0.0},
-                         .velocity = {0.0, 0.0, 0.0},
-                         .position = {0.0, 0.0, 0.0},
-                         .mode = dcont::ModeInput::Rotation});
+        auto inp = dcont::Input{.joystick = {.throttle_input = 0.5,
+                                             .roll_input = cont_input.rx,
+                                             .yaw_input = cont_input.lx,
+                                             .pitch_input = cont_input.ry},
+                                .acceleration = {0.0, 0.0, 0.0},
+                                .rotation = {0.0, 0.0, 0.0},
+                                .velocity = {0.0, 0.0, 0.0},
+                                .position = {0.0, 0.0, 0.0},
+                                .mode = dcont::ModeInput::Rotation};
+
+        dcont::set_input(drone_controller, inp);
+
+        this->last_input = inp;
       } else {
         drone_cont_stabilize();
       }

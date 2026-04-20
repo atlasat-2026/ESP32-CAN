@@ -3,13 +3,15 @@
 #include "drone.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
-#include "esp32-hal.h" #include "esp_log.h"
+#include "esp32-hal.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include <atomic>
-#include <cmath> #include <cstdint>
+#include <cmath>
+#include <cstdint>
 #include <optional>
 
 #include "env_sens.h"
@@ -49,6 +51,29 @@ extern "C" void app_main(void) {
 
   xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
 
+  // vTaskDelay(5000);
+  // for (int i = 0; i < 4; i++) {
+  //   motor_throttles[i] = 10.0;
+  //   vTaskDelay(2000);
+  //   motor_throttles[i] = 0.0;
+  // }
+
+  xTaskCreate(
+      [](void *pvParameters) {
+        while (true) {
+          while (packet_rx_queue &&
+                 xQueueReceive(packet_rx_queue, &packet_data[0], 20)) {
+            handle_packet(&packet_data[0]);
+          }
+          vTaskDelay(10);
+        }
+      },
+      "lambda_recv_task", 8192, NULL, 5, NULL);
+
+  setup_imu();
+
+  vTaskDelay(10);
+
   xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
                           "motor_throttles_task", // Name for debugging
                           1024 * 4,               // Stack size in bytes
@@ -68,27 +93,6 @@ extern "C" void app_main(void) {
                           NULL, // Task handle
                           0     // Core ID
   );
-
-  // vTaskDelay(5000);
-  // for (int i = 0; i < 4; i++) {
-  //   motor_throttles[i] = 10.0;
-  //   vTaskDelay(2000);
-  //   motor_throttles[i] = 0.0;
-  // }
-
-  xTaskCreate(
-      [](void *pvParameters) {
-        while (true) {
-          while (packet_rx_queue &&
-                 xQueueReceive(packet_rx_queue, &packet_data[0], 20)) {
-            handle_packet(&packet_data[0]);
-          }
-          vTaskDelay(1);
-        }
-      },
-      "lambda_recv_task", 8192, NULL, 5, NULL);
-
-  setup_imu();
   servo_init();
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
 
@@ -120,7 +124,7 @@ extern "C" void app_main(void) {
 
     if (nav_mutex && xSemaphoreTake(nav_mutex, 10)) {
 
-      if (gps->gps_avaliable()) {
+      if (gps && gps->gps_avaliable()) {
         waypoint current_wayp = nav_man.get_current_waypoint();
         auto pos = sens_fus.position;
 
@@ -211,8 +215,9 @@ extern "C" void app_main(void) {
 
       if (motor_throttles != nullptr) {
 
-        ESP_LOGI(TAG, "Throttles: (%f, %f, %f, %f)", motor_throttles[0],
-                 motor_throttles[1], motor_throttles[2], motor_throttles[3]);
+        ESP_LOGI(TAG, "Throttles: (%f, %f, %f, %f), kill: %d",
+                 motor_throttles[0], motor_throttles[1], motor_throttles[2],
+                 motor_throttles[3], std::atomic_load(&killswitch_active));
       }
 
       if (time_last_controller - millis() < CONNECTION_LOST_THRESHOLD) {

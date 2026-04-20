@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_log.h"
+#include "gps.h"
 #include "nav.h"
 
 #include "esp32-hal.h"
@@ -26,7 +27,6 @@
 #include "imu.h"
 #include "packet_handler.h"
 #include "sens_fus.h"
-
 #define CONNECTION_LOST_THRESHOLD 200
 
 #define MAX_LANDING_LINVEL 1.0
@@ -88,7 +88,7 @@ struct drone_cont_state {
                                                  .yaw_input = 0.0,
                                                  .pitch_input = 0.0},
                                     .acceleration = {0.0, 0.0, 0.0},
-                                    .rotation = {0.0, 0.0, M_PI},
+                                    .rotation = {0.0, 0.0, 0.0},
                                     .velocity = {0.0, 0.0, 0.0},
                                     .position = {0.0, 0.0, 0.0},
                                     .mode = dcont::ModeInput::Rotation});
@@ -159,9 +159,6 @@ struct drone_cont_state {
     case INPUT_TYPE::ACRO: {
       if (controller_input_semaphore &&
           xSemaphoreTake(controller_input_semaphore, 10)) {
-        // if (millis() - time_last_controller > CONNECTION_LOST_THRESHOLD) {
-        //   current_controller_input = {0, 0, 0, 0};
-        // }
         cont_input = current_controller_input;
 
         xSemaphoreGive(controller_input_semaphore);
@@ -173,59 +170,61 @@ struct drone_cont_state {
                                       .pitch_input = cont_input.ry},
                          .acceleration = {0.0, 0.0, 0.0},
                          .rotation = {0.0, 0.0, 0.0},
-                         .velocity = {8 * cont_input.rx, 8 * cont_input.ry,
-                                      8 * cont_input.ly},
+                         .velocity = {2 * cont_input.rx, 2 * cont_input.ry,
+                                      2 * cont_input.ly},
                          .position = {0.0, 0.0, 0.0},
-                         .mode = dcont::ModeInput::Velocity};
-        // ESP_LOGI("TEST", "(%f,%f), (%f,%f)", cont_input.lx, cont_input.ly,
-        //          cont_input.rx, cont_input.ry);
+                         .mode = dcont::ModeInput::Rotation};
 
         dcont::set_input(drone_controller, inp);
 
-        this->last_input = inp;
+        // ESP_LOGI("TEST", "(%f,%f), (%f,%f)", cont_input.lx, cont_input.ly,
+        //          cont_input.rx, cont_input.ry);
+
       } else {
-        drone_cont_stabilize();
+        ESP_LOGE("TAG", "ERRR");
       }
     } break;
 
-    case INPUT_TYPE::AUTO_NAV: {
-      if (!stabilization_done()) {
-        drone_cont_stabilize();
-      } else if (xSemaphoreTake(nav_mutex, 10)) {
-        waypoint wayp = nav_man.get_current_waypoint();
-        if (nav_man.current_waypoint == 8) {
-          dcont::set_max_linvel(this->drone_controller, MAX_LANDING_LINVEL);
-        }
-
-        xSemaphoreGive(nav_mutex);
-        if (wayp.coords_in_axis == std::nullopt) {
-          drone_cont_stabilize();
-        } else {
-
-          auto coords = wayp.coords_in_axis.value_or(Eigen::Vector3f::Zero());
-
-          dcont::set_input(
-              drone_controller,
-              dcont::Input{.joystick = {.throttle_input = 0.0,
-                                        .roll_input = 0.0,
-                                        .yaw_input = 0.0,
-                                        .pitch_input = 0.0},
-                           .acceleration = {0.0, 0.0, 0.0},
-                           .rotation = {0.0, 0.0, 0.0},
-                           .velocity = {0.0, 0.0, 0.0},
-                           .position = {coords.x(), coords.y(), coords.z()},
-                           .mode = dcont::ModeInput::Position});
-        }
-      } else {
-        drone_cont_stabilize();
-      }
-      break;
-    }
-    default:
-    case INPUT_TYPE::STABILIZE_FALL: {
-      drone_cont_stabilize();
-      break;
-    }
+      // case INPUT_TYPE::AUTO_NAV: {
+      //   if (!stabilization_done()) {
+      //     drone_cont_stabilize();
+      //   } else if (xSemaphoreTake(nav_mutex, 10)) {
+      //     waypoint wayp = nav_man.get_current_waypoint();
+      //     if (nav_man.current_waypoint == 8) {
+      //       dcont::set_max_linvel(this->drone_controller,
+      //       MAX_LANDING_LINVEL);
+      //     }
+      //
+      //     xSemaphoreGive(nav_mutex);
+      //     if (wayp.coords_in_axis == std::nullopt) {
+      //       drone_cont_stabilize();
+      //     } else {
+      //
+      //       auto coords = wayp.coords_in_axis.value();
+      //
+      //       dcont::set_input(
+      //           drone_controller,
+      //           dcont::Input{.joystick = {.throttle_input = 0.0,
+      //                                     .roll_input = 0.0,
+      //                                     .yaw_input = 0.0,
+      //                                     .pitch_input = 0.0},
+      //                        .acceleration = {0.0, 0.0, 0.0},
+      //                        .rotation = {0.0, 0.0, 0.0},
+      //                        .velocity = {0.0, 0.0, 0.0},
+      //                        .position = {coords.x(), coords.y(),
+      //                        coords.z()}, .mode =
+      //                        dcont::ModeInput::Position});
+      //     }
+      //   } else {
+      //     drone_cont_stabilize();
+      //   }
+      //   break;
+      // }
+      // default:
+      // case INPUT_TYPE::STABILIZE_FALL: {
+      //   drone_cont_stabilize();
+      //   break;
+      // }
     }
   }
   void update() {

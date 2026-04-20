@@ -7,6 +7,4 @@
 
 inline QueueHandle_t logQueue = nullptr;
 
-void init_logging_queue();
-
 void logger_task(void *pvParameters);

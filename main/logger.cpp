@@ -5,15 +5,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 
-void init_logging_queue() { logQueue = xQueueCreate(10, sizeof(char *)); }
-
 void logger_task(void *pvParameters) {
-  char *string_to_log = nullptr;
-  while (true) {
-    if (xQueueReceive(logQueue, string_to_log, portMAX_DELAY) == pdTRUE) {
+  logQueue = xQueueCreate(10, sizeof(char *));
 
-      ESP_LOGI("LOGGER", "DCONT_DBG: %s", string_to_log);
-      free(string_to_log);
+  char *string_to_log = nullptr;
+
+  while (true) {
+    if (xQueueReceive(logQueue, &string_to_log, portMAX_DELAY) == pdTRUE) {
+      if (string_to_log != nullptr) {
+        ESP_LOGI("LOGGER", "DCONT_DBG: %s", string_to_log);
+
+        free(string_to_log);
+      }
     }
   }
 }

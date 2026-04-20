@@ -6,7 +6,7 @@ import pandas as pd
 from pandas.io.parsers.readers import csv
 
 # 1. Define your log file path
-file_path = "log.log"
+file_path = "output_9.log"
 
 # 2. Extract and parse data
 cleaned_data = []
@@ -54,15 +54,9 @@ df = pd.read_csv("out.csv")
 
 # Define groups based on your header
 groups = {
-    "Rotation": ["rot_x", "rot_y", "rot_z"],
-    "Angular Velocity": ["angvel_x", "angvel_y", "angvel_z"],
-    "Target Motors": ["target_mot_x", "target_mot_y", "target_mot_z"],
-    "Target Angular Velocity": [
-        "target_angular_vel_x",
-        "target_angular_vel_y",
-        "target_angular_vel_z",
-    ],
-    "Target Rotation": ["target_rot_x", "target_rot_y", "target_rot_z"],
+    "x": ["target_rot_x", "rot_x", "target_angular_vel_x", "angvel_x", "target_mot_x"],
+    "y": ["target_rot_y", "rot_y", "target_angular_vel_y", "angvel_y", "target_mot_y"],
+    "z": ["target_rot_z", "rot_z", "target_angular_vel_z", "angvel_z", "target_mot_z"],
 }
 
 # Create subplots
@@ -71,8 +65,8 @@ fig, axes = plt.subplots(len(groups), 1, figsize=(12, 18), sharex=True)
 # Plotting each group
 for ax, (title, columns) in zip(axes, groups.items()):
     for col in columns:
-        ax.plot(df.index, df[col], label=col)
-        # ax.plot(df["millis"], df[col], label=col)
+        # ax.plot(df.index, df[col], label=col)
+        ax.plot(df["millis"], df[col], label=col)
     ax.set_title(title)
     ax.legend(loc="upper right")
     ax.grid(True, linestyle="--", alpha=0.7)

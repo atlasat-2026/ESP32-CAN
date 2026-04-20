@@ -26,7 +26,6 @@
 #include "servo.h"
 
 static const char *TAG = "MAIN";
-
 #define TIME_RELEASE_QUEUE_TO_ACTIVATION 500
 
 extern "C" void app_main(void) {
@@ -39,11 +38,9 @@ extern "C" void app_main(void) {
   gpio_install_isr_service(0);
   Serial.begin(115200);
 
-  init_logging_queue();
-
   xTaskCreatePinnedToCore(logger_task,   // Function name
                           "logger_task", // Name for debugging
-                          2048,          // Stack size in bytes
+                          2048 * 8,      // Stack size in bytes
                           NULL,          // Parameters
                           2,             // Priority (higher = more urgent)
                           NULL,          // Task handle
@@ -83,7 +80,7 @@ extern "C" void app_main(void) {
 
   xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
                           "motor_throttles_task", // Name for debugging
-                          1024 * 4,               // Stack size in bytes
+                          1024 * 8,               // Stack size in bytes
                           NULL,                   // Parameters
                           24,   // Priority (higher = more urgent)
                           NULL, // Task handle
@@ -102,21 +99,31 @@ extern "C" void app_main(void) {
   );
   servo_init();
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
+  ESP_LOGI("MAIN", "FLASHED");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};
-  bool nav_data_ready = false;
+  bool sens_fus_data_ready = false;
 
   uint64_t last_print_time = 0;
   uint64_t last_position_broadcast_time = 0;
   uint64_t last_status_broadcast_time = 0;
   uint64_t time_activation_queue = 0;
   bool released = false;
+  bool active = false;
+
+  while (true) {
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    current_controller_input.lx = 0;
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    current_controller_input.lx = M_PI / 2.0;
+  }
 
   while (true) {
 
     if (millis() > last_position_broadcast_time + 200 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_POSITION);
+      // ESP_LOGI("RADIO_TX_INVOK", "INFO DRONE POSITION");
       last_position_broadcast_time = millis();
     }
     // auto vel = sens_fus.velocity;
@@ -126,6 +133,7 @@ extern "C" void app_main(void) {
 
     if (millis() > last_status_broadcast_time + 500 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_STATUS);
+      send_packet_getter(PACKET_TYPE::DRONE_NAV_WAYPOINT_0);
       last_status_broadcast_time = millis();
     }
 
@@ -155,15 +163,18 @@ extern "C" void app_main(void) {
     if (released && drone_cont &&
         std::atomic_load(&drone_cont->current_input_mode) ==
             INPUT_TYPE::AUTO_NAV &&
-        millis() - time_activation_queue > TIME_RELEASE_QUEUE_TO_ACTIVATION) {
+        millis() - time_activation_queue > TIME_RELEASE_QUEUE_TO_ACTIVATION &&
+        !active) {
 
       dcont::reset_pid_states(drone_cont->drone_controller);
-      servo_set(SERVO_OPTIONS::UP);
+      active = true;
+      // servo_set(SERVO_OPTIONS::UP);
 
       xTaskCreate(
           [](void *pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(700));
             std::atomic_store(&killswitch_active, false);
+            vTaskDelete(NULL);
           },
           "lambda_task", 2048, NULL, 5, NULL);
     }
@@ -183,6 +194,40 @@ extern "C" void app_main(void) {
           lat = gps->gps->latitudeDegrees;
           lon = gps->gps->longitudeDegrees;
           alt = gps->gps->altitude;
+
+          xTaskCreate(
+              [](void *pvParameters) {
+                Eigen::Vector3f coords = Eigen::Vector3f::Zero();
+                vTaskDelay(10000);
+                for (int i = 0; i < 10; i++) {
+                  vTaskDelay(6000);
+
+                  if (gps_mutex &&
+                      xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
+
+                    auto lat = gps->gps->latitudeDegrees;
+                    auto lon = gps->gps->longitudeDegrees;
+                    auto alt = gps->gps->altitude;
+                    coords += Eigen::Vector3f(lat, lon, alt) * 0.1;
+
+                    xSemaphoreGive(gps_mutex);
+                  }
+                }
+
+                if (gps_mutex &&
+                    xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
+
+                  gps->origin_lat = coords.x();
+                  gps->origin_long = coords.y();
+                  xSemaphoreGive(gps_mutex);
+                }
+
+                nav_man.waypoints[0].coords = coords;
+                nav_man.current_waypoint = 0;
+                nav_man.waypoints[0].active = true;
+                vTaskDelete(NULL);
+              },
+              "lambda_task_gps_init", 2048, NULL, 5, NULL); // FIXME: REMOVE
           gps_values = true;
         }
         sat_count = gps->gps->satellites;
@@ -209,26 +254,31 @@ extern "C" void app_main(void) {
           xSemaphoreTake(sens_fus_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         local_pos = sens_fus.position;
         local_vel = sens_fus.velocity;
-        nav_data_ready = true;
+        sens_fus_data_ready = true;
         xSemaphoreGive(sens_fus_mutex);
       }
 
-      if (nav_data_ready) {
-        ESP_LOGI(TAG, "nav(pos): (%f, %f, %f)", local_pos[0], local_pos[1],
+      auto wayp = nav_man.get_current_waypoint().coords;
+      auto wayp_axis = nav_man.get_current_waypoint().coords_in_axis.value_or(
+          Eigen::Vector3f::Zero());
+      ESP_LOGI(TAG, "wayp(pos): (%f, %f, %f)", wayp.x(), wayp.y(), wayp.z());
+      ESP_LOGI(TAG, "wayp_axis(pos): (%f, %f, %f)", wayp_axis.x(),
+               wayp_axis.y(), wayp_axis.z());
+
+      if (sens_fus_data_ready) {
+        ESP_LOGI(TAG, "sens_fus(pos): (%f, %f, %f)", local_pos[0], local_pos[1],
                  local_pos[2]);
-        ESP_LOGI(TAG, "nav(vel): (%f, %f, %f)", local_vel[0], local_vel[1],
+        ESP_LOGI(TAG, "sens_fus(vel): (%f, %f, %f)", local_vel[0], local_vel[1],
                  local_vel[2]);
       }
 
       if (motor_throttles != nullptr) {
-
         ESP_LOGI(TAG, "Throttles: (%f, %f, %f, %f), kill: %d",
                  motor_throttles[0], motor_throttles[1], motor_throttles[2],
                  motor_throttles[3], std::atomic_load(&killswitch_active));
       }
 
       if (time_last_controller - millis() < CONNECTION_LOST_THRESHOLD) {
-
         ESP_LOGI(TAG, "Controller: (%f, %f), (%f, %f)",
                  current_controller_input.lx, current_controller_input.ly,
                  current_controller_input.rx, current_controller_input.ry);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Eigen/Core"
 #include "drone_controller.h"
 
 #include "freertos/idf_additions.h"
@@ -11,7 +12,7 @@
 #define WAYPOINT_COUNT 8
 
 struct waypoint {
-  Eigen::Vector3f coords; // lat, lon, alt
+  Eigen::Vector3f coords = Eigen::Vector3f::Zero(); // lat, lon, alt
   std::optional<Eigen::Vector3f> coords_in_axis = std::nullopt;
   bool active = false; // active or to be skipped
   bool landing = false;

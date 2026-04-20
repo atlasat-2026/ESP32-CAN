@@ -2,7 +2,8 @@
 
 #include "DShotRMT.h"
 #include "Eigen/Core"
-#include "Eigen/Geometry" #include "driver/rmt_tx.h"
+#include "Eigen/Geometry"
+#include "driver/rmt_tx.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
 
@@ -49,16 +50,16 @@ dcont::ControllerConfig default_config() {
 
   // Rotation Loop (Rotation/Accel -> Angular Rate)
   config.stack.rotation_pid = {
-      .kp = {1.0f, 1.0f, 2.0f},
-      .ki = {0.01f, 0.01f, 0.02f},
-      .kd = {0.1f, 0.1f, 0.0f},
+      .kp = {1.0f, 10.0f, 2.0f},
+      .ki = {0.01f, 1.0f, 0.02f},
+      .kd = {0.1f, 0.0f, 0.0f},
       .integral_cap = {4.0f, 4.0f, 4.0f},
       .frequency = 200.0f,
   };
 
   // Rate Loop (Angular Rate -> Torque) - The "Inner" Loop
   config.stack.rate_pid = {
-      .kp = {0.0f, 0.0f, 1.0f},
+      .kp = {0.0f, 0.5f, 0.0f},
       .ki = {0.00f, 0.00f, 0.0f},
       .kd = {0.000f, 0.000f, 0.0f},
       .integral_cap = {1.0f, 1.0f, 1.0f},

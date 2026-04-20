@@ -88,7 +88,7 @@ struct drone_cont_state {
                                                  .yaw_input = 0.0,
                                                  .pitch_input = 0.0},
                                     .acceleration = {0.0, 0.0, 0.0},
-                                    .rotation = {0.0, 0.05 * M_PI, 0.0},
+                                    .rotation = {0.0, 0.0, M_PI},
                                     .velocity = {0.0, 0.0, 0.0},
                                     .position = {0.0, 0.0, 0.0},
                                     .mode = dcont::ModeInput::Rotation});

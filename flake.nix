@@ -31,7 +31,7 @@
               openssl
               stdenv.cc.cc.lib
               libclang
-              (pkgs.python3.withPackages
+              (pkgs.python312.withPackages
                 (python-pkgs: with python-pkgs; [ pandas matplotlib ]))
             ] ++ (if system == "aarch64-darwin" then [ ] else [ gdb ]);
           shellHook = ''

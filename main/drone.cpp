@@ -3,9 +3,16 @@
 #include "DShotRMT.h"
 #include "Eigen/Core"
 #include "Eigen/Geometry"
+
 #include "driver/rmt_tx.h"
 #include "drone_comms.h"
 #include "drone_controller.h"
+#include "esp_timer.h"
+#include "imu.h"
+#include "logger.h"
+#include "nav.h"
+#include "packet_handler.h"
+#include "sens_fus.h"
 
 #include "dshot_definitions.h"
 #include "esp32-hal.h"
@@ -15,10 +22,6 @@
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
-#include "imu.h"
-#include "nav.h"
-#include "packet_handler.h"
-#include "sens_fus.h"
 #include "soc/gpio_num.h"
 #include <algorithm>
 #include <cstdint>
@@ -44,24 +47,24 @@ dcont::ControllerConfig default_config() {
 
   // Velocity Loop (Velocity -> Acceleration/Rotation)
   config.stack.linvel_pid = {.kp = {1.0f, 1.0f, 1.0f},
-                             .ki = {0.01f, 0.01f, 0.01f},
+                             .ki = {0.00f, 0.00f, 0.00f},
                              .kd = {0.0f, 0.0f, 0.0f},
                              .frequency = 50.0f};
 
   // Rotation Loop (Rotation/Accel -> Angular Rate)
   config.stack.rotation_pid = {
-      .kp = {1.0f, 10.0f, 2.0f},
-      .ki = {0.01f, 1.0f, 0.02f},
-      .kd = {0.1f, 0.0f, 0.0f},
-      .integral_cap = {4.0f, 4.0f, 4.0f},
+      .kp = {30.0f, 40.0f, 2.0f},
+      .ki = {2.0f, 2.0f, 0.02f},
+      .kd = {0.0f, 0.0f, 0.0f},
+      .integral_cap = {10.0f, 10.0f, 4.0f},
       .frequency = 200.0f,
   };
 
   // Rate Loop (Angular Rate -> Torque) - The "Inner" Loop
   config.stack.rate_pid = {
-      .kp = {0.0f, 0.5f, 0.0f},
+      .kp = {0.066f, 0.066f, 0.66f},
       .ki = {0.00f, 0.00f, 0.0f},
-      .kd = {0.000f, 0.000f, 0.0f},
+      .kd = {0.01f, 0.01f, 0.0f},
       .integral_cap = {1.0f, 1.0f, 1.0f},
       .frequency = 500.0f,
   };
@@ -92,23 +95,27 @@ dcont::ControllerConfig default_config() {
   return config;
 }
 
-constexpr uint8_t wait_ms = 1000.0 / CONTROLLER_TASK_FREQUENCY;
+constexpr uint64_t wait_micro_sec = 1000000.0 / CONTROLLER_TASK_FREQUENCY;
 
 void drone_controller_task(void *params) {
-  drone_cont = new drone_cont_state;
-  drone_cont->init();
+    drone_cont = new drone_cont_state;
+    drone_cont->init();
 
-  while (true) {
-    drone_cont->update();
-    // char *csv_str = (char
-    // *)dcont::debug_stacked(drone_cont->drone_controller,
-    //                                              drone_cont->last_input);
-    //
-    // ESP_LOGI("DCONT_DBG", "START%sEND", csv_str);
-    // free(csv_str);
+    const TickType_t xFrequency = pdMS_TO_TICKS(1); 
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    int i = 0;
 
-    vTaskDelay(pdMS_TO_TICKS(1));
-  }
+    while (true) {
+        i++;
+
+        if (i > 20) {
+            char *csv_str = (char *)dcont::debug_stacked(
+                drone_cont->drone_controller, drone_cont->last_input, xTaskGetTickCount());
+            xQueueSend(logQueue, csv_str, 0);
+            i = 0;
+        }
+        xTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
 }
 
 const gpio_num_t motor_pins[4] = {GPIO_NUM_46, GPIO_NUM_16, GPIO_NUM_14,
@@ -138,7 +145,7 @@ void motor_throttles_task(void *params) {
   while (true) {
     for (int i = 0; i < 4; i++) {
       float throttle =
-          std::clamp(motor_throttles[i], 0.0f, 1.0f) * 100.0f * 0.4f;
+          std::clamp(motor_throttles[i], 0.0f, 1.0f) * 100.0f * 0.6f;
       if (atomic_load(&killswitch_active)) {
         throttle = 0.0;
       }
@@ -148,7 +155,7 @@ void motor_throttles_task(void *params) {
     i++;
     if (i >= 50) {
 
-      ESP_LOGI("MOTORSSS", "throttles (%f,%f,%f,%f)", motor_throttles[0],
+      ESP_LOGI("MOTORS", "throttles (%f,%f,%f,%f)", motor_throttles[0],
                motor_throttles[1], motor_throttles[2], motor_throttles[3]);
       i = 0;
     }

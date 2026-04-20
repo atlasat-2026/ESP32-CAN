@@ -17,8 +17,10 @@
 #include "env_sens.h"
 #include "gps.h"
 #include "imu.h"
+#include "logger.h"
 #include "nav.h"
 #include "packet_handler.h"
+#include "portmacro.h"
 #include "radio.h"
 #include "sens_fus.h"
 #include "servo.h"
@@ -37,6 +39,17 @@ extern "C" void app_main(void) {
   gpio_install_isr_service(0);
   Serial.begin(115200);
 
+  init_logging_queue();
+
+  xTaskCreatePinnedToCore(logger_task,   // Function name
+                          "logger_task", // Name for debugging
+                          2048,          // Stack size in bytes
+                          NULL,          // Parameters
+                          2,             // Priority (higher = more urgent)
+                          NULL,          // Task handle
+                          0              // Core ID
+  );
+
   xTaskCreatePinnedToCore(radio_task,   // Function name
                           "radio_rxtx", // Name for debugging
                           4096,         // Stack size in bytes
@@ -51,24 +64,18 @@ extern "C" void app_main(void) {
 
   xTaskCreatePinnedToCore(gps_poll_task, "gps_poll", 8192, NULL, 5, NULL, 0);
 
-  // vTaskDelay(5000);
-  // for (int i = 0; i < 4; i++) {
-  //   motor_throttles[i] = 10.0;
-  //   vTaskDelay(2000);
-  //   motor_throttles[i] = 0.0;
-  // }
-
   xTaskCreate(
       [](void *pvParameters) {
         while (true) {
-          while (packet_rx_queue &&
-                 xQueueReceive(packet_rx_queue, &packet_data[0], 20)) {
+          while (
+              packet_rx_queue &&
+              xQueueReceive(packet_rx_queue, &packet_data[0], portMAX_DELAY)) {
             handle_packet(&packet_data[0]);
           }
-          vTaskDelay(10);
+          vTaskDelay(1);
         }
       },
-      "lambda_recv_task", 8192, NULL, 5, NULL);
+      "task_recv_task", 8192, NULL, 5, NULL);
 
   setup_imu();
 

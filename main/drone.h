@@ -166,15 +166,19 @@ struct drone_cont_state {
 
         xSemaphoreGive(controller_input_semaphore);
 
-        auto inp = dcont::Input{.joystick = {.throttle_input = 0.5,
-                                             .roll_input = cont_input.rx,
-                                             .yaw_input = cont_input.lx,
-                                             .pitch_input = cont_input.ry},
-                                .acceleration = {0.0, 0.0, 0.0},
-                                .rotation = {0.0, 0.0, 0.0},
-                                .velocity = {0.0, 0.0, 0.0},
-                                .position = {0.0, 0.0, 0.0},
-                                .mode = dcont::ModeInput::Rotation};
+        auto inp =
+            dcont::Input{.joystick = {.throttle_input = 0.5,
+                                      .roll_input = cont_input.rx,
+                                      .yaw_input = cont_input.lx,
+                                      .pitch_input = cont_input.ry},
+                         .acceleration = {0.0, 0.0, 0.0},
+                         .rotation = {0.0, 0.0, 0.0},
+                         .velocity = {8 * cont_input.rx, 8 * cont_input.ry,
+                                      8 * cont_input.ly},
+                         .position = {0.0, 0.0, 0.0},
+                         .mode = dcont::ModeInput::Velocity};
+        // ESP_LOGI("TEST", "(%f,%f), (%f,%f)", cont_input.lx, cont_input.ly,
+        //          cont_input.rx, cont_input.ry);
 
         dcont::set_input(drone_controller, inp);
 

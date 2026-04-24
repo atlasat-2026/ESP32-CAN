@@ -1,4 +1,5 @@
 #include "imu.h"
+#include "Eigen/Core"
 #include "Eigen/Geometry"
 #include "Esp.h"
 #include "drone_controller.h"
@@ -45,15 +46,13 @@ BNO08x *setup_imu() {
   }
   imu->print_product_ids();
 
+  // imu->dynamic_calibration_run_routine();
   imu->dynamic_calibration_autosave_enable();
   imu->dynamic_calibration_enable(BNO08xCalSel::all);
 
-  // imu->rpt.rv_game.enable(2500UL);
-  imu->rpt.rv.enable(2500UL);
-  // imu->rpt.cal_magnetometer.enable(10000UL);
-  imu->rpt.linear_accelerometer.enable(2500UL);
-  // imu->rpt.accelerometer.enable(10000UL);
-  imu->rpt.cal_gyro.enable(2500UL);
+  imu->rpt.rv.enable(10000UL);                   // 100Hz
+  imu->rpt.linear_accelerometer.enable(10000UL); // 100Hz
+  imu->rpt.cal_gyro.enable(2500UL);              // 400Hz
 
   imu->register_cb([imu, local_state]() {
     // ESP_LOGI("IMU", "CALLBACK");
@@ -69,6 +68,8 @@ BNO08x *setup_imu() {
       auto sens_euler = imu->rpt.rv.get_euler();
       local_state->rot =
           Eigen::Quaternionf(sens_rot.real, sens_rot.i, sens_rot.j, sens_rot.k);
+      local_state->rot_euler =
+          Eigen::Vector3f(sens_euler.x, sens_euler.y, sens_euler.z);
 
       // Eigen::Quaternionf q_global_yaw(
       //     Eigen::AngleAxisf(-M_PI / 2.0, Eigen::Vector3f::UnitZ()));

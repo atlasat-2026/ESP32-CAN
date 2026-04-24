@@ -66,6 +66,8 @@ void radio_task(void *pvParameters) {
     radio.readAllRegsCompact();
 
   } else {
+
+    radio.readAllRegsCompact();
     ESP_LOGE(TAG, "Radio Init FAILED! Restarting.");
     ESP.restart();
   }
@@ -73,7 +75,7 @@ void radio_task(void *pvParameters) {
   while (1) {
     uint32_t now = millis();
 
-    if (radio.receiveDone()) {
+    while (radio.receiveDone()) {
 
       // If we receive ANY valid packet while in probation, confirm the switch
       // (Bit-rate switching)
@@ -102,7 +104,6 @@ void radio_task(void *pvParameters) {
         ESP_LOGI(TAG, "Datarate change requested: %d. Switching in 100ms...",
                  target_bitrate);
       } else {
-        ESP_LOGI(TAG, "RECVD PACKET");
         xQueueSend(packet_rx_queue, &packet_data[0], portMAX_DELAY);
       }
 

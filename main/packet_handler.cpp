@@ -61,6 +61,7 @@ void handle_packet(uint8_t *packet_addr) {
     atomic_store(&drone_cont->current_input_mode, packet->input_type);
 
   } else if (packet_type == PACKET_TYPE::CONTROLLER_INPUT) {
+    // ESP_LOGI("RADIO_RX", "Controller recvd");
     packet_controller_input *packet =
         (packet_controller_input *)(packet_addr + sizeof(PACKET_TYPE));
 
@@ -68,6 +69,8 @@ void handle_packet(uint8_t *packet_addr) {
       current_controller_input = *packet;
       time_last_controller = millis();
       xSemaphoreGive(controller_input_semaphore);
+    } else {
+      ESP_LOGE("RADIO_RX", "FAILED TO GET JOYSTICK");
     }
   }
 }
@@ -83,6 +86,8 @@ void handle_waypoint_update(uint8_t *packet_addr, uint8_t index) {
 
   if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
     nav_man.waypoints[index].coords = coords;
+    nav_man.waypoints[index].landing = packet->landing;
+    nav_man.waypoints[index].active = packet->active;
     xSemaphoreGive(nav_mutex);
   }
 }
@@ -92,7 +97,6 @@ void handle_nav_update(uint8_t *packet_addr) {
       (packet_drone_nav *)(packet_addr + sizeof(PACKET_TYPE));
 
   if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
-    nav_man.set_active_mask(packet->active_mask);
     nav_man.current_waypoint = packet->current_waypoint;
   }
 }
@@ -103,17 +107,25 @@ void send_packet_getter(PACKET_TYPE requested_type) {
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_POSITION) {
 
-    Eigen::Vector3f local_vel = imu_state_var.rot.inverse() * sens_fus.velocity;
-
-    resp_packet = create_packet_pooled(
-        PACKET_TYPE::INFO_DRONE_POSITION,
-        packet_info_drone_position{
-            .trans = {sens_fus.position.x(), sens_fus.position.y(),
-                      sens_fus.position.z()},
-            .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
-            .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
-                    imu_state_var.rot.y(), imu_state_var.rot.z()},
-        });
+    if (xSemaphoreTake(nav_mutex, 10)) {
+      if (xSemaphoreTake(imu_state_mutex, 10)) {
+        Eigen::Vector3f local_vel =
+            imu_state_var.rot.inverse() * sens_fus.velocity;
+        resp_packet = create_packet_pooled(
+            PACKET_TYPE::INFO_DRONE_POSITION,
+            packet_info_drone_position{
+                .trans = {sens_fus.position.x(), sens_fus.position.y(),
+                          sens_fus.position.z()},
+                .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
+                .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
+                        imu_state_var.rot.y(), imu_state_var.rot.z()},
+                .press = env_sens::get_pressure(),
+                .temp = env_sens::get_temperature(),
+            });
+        xSemaphoreGive(imu_state_mutex);
+      }
+      xSemaphoreGive(nav_mutex);
+    }
   }
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {
@@ -131,14 +143,13 @@ void send_packet_getter(PACKET_TYPE requested_type) {
 
   // Navigation
   if (requested_type == PACKET_TYPE::DRONE_NAV) {
-    uint8_t active_mask, current;
+    uint8_t current;
     if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
-      active_mask = nav_man.get_active_mask();
       current = nav_man.current_waypoint;
       xSemaphoreGive(nav_mutex);
 
-      resp_packet = create_packet_pooled(
-          PACKET_TYPE::DRONE_NAV, packet_drone_nav{active_mask, current});
+      resp_packet = create_packet_pooled(PACKET_TYPE::DRONE_NAV,
+                                         packet_drone_nav{current});
     }
   }
 
@@ -154,15 +165,19 @@ void send_packet_getter(PACKET_TYPE requested_type) {
 
     Eigen::Vector3f coords;
     bool land = false;
+    bool active = false;
     if (xSemaphoreTake(nav_mutex, portMAX_DELAY)) {
       coords = nav_man.waypoints[index].coords;
       land = nav_man.waypoints[index].landing;
+      active = nav_man.waypoints[index].active;
+
+      resp_packet = create_packet_pooled(
+          requested_type,
+          packet_drone_nav_waypoint{.coord = {coords[0], coords[1], coords[2]},
+                                    .landing = land,
+                                    .active = active});
       xSemaphoreGive(nav_mutex);
     }
-
-    resp_packet = create_packet_pooled(
-        requested_type,
-        packet_drone_nav_waypoint{{coords[0], coords[1], coords[2]}, land});
   }
 
   if (resp_packet.first != nullptr) {

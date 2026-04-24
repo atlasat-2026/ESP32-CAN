@@ -23,15 +23,15 @@
 #include "portmacro.h"
 #include "radio.h"
 #include "sens_fus.h"
-#include "servo.h"
 
 static const char *TAG = "MAIN";
-#define TIME_RELEASE_QUEUE_TO_ACTIVATION 500
+#define TIME_RELEASE_QUEUE_TO_ACTIVATION 1000
+
+bool first_wayp_was_set = false;
 
 extern "C" void app_main(void) {
 
   sens_fus_mutex = xSemaphoreCreateMutex();
-  configASSERT(sens_fus_mutex);
   nav_mutex = xSemaphoreCreateMutex();
 
   initArduino();
@@ -76,19 +76,6 @@ extern "C" void app_main(void) {
 
   setup_imu();
 
-  vTaskDelay(10);
-
-  xTaskCreatePinnedToCore(motor_throttles_task,   // Function name
-                          "motor_throttles_task", // Name for debugging
-                          1024 * 8,               // Stack size in bytes
-                          NULL,                   // Parameters
-                          24,   // Priority (higher = more urgent)
-                          NULL, // Task handle
-                          1     // Core ID
-  );
-
-  vTaskDelay(2);
-
   xTaskCreatePinnedToCore(drone_controller_task,   // Function name
                           "drone_controller_task", // Name for debugging
                           1024 * 32,               // Stack size in bytes
@@ -97,9 +84,8 @@ extern "C" void app_main(void) {
                           NULL, // Task handle
                           0     // Core ID
   );
-  servo_init();
+
   ESP_LOGI("MAIN", "All tasks spawned. Main loop free.");
-  ESP_LOGI("MAIN", "FLASHED2");
 
   Eigen::Vector3f local_pos = {0, 0, 0};
   Eigen::Vector3f local_vel = {0, 0, 0};
@@ -114,38 +100,49 @@ extern "C" void app_main(void) {
 
   while (true) {
 
-    if (millis() > last_position_broadcast_time + 200 && packet_tx_queue) {
+    if (millis() > last_position_broadcast_time + 100 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_POSITION);
       last_position_broadcast_time = millis();
     }
 
-    if (millis() > last_status_broadcast_time + 500 && packet_tx_queue) {
+    if (millis() > last_status_broadcast_time + 5000 && packet_tx_queue) {
       send_packet_getter(PACKET_TYPE::INFO_DRONE_STATUS);
-      send_packet_getter(PACKET_TYPE::DRONE_NAV_WAYPOINT_0);
+      for (uint8_t i = 0; i < 8; i++) {
+        send_packet_getter(
+            (PACKET_TYPE)(PACKET_TYPE::DRONE_NAV_WAYPOINT_0 + i));
+      }
       last_status_broadcast_time = millis();
     }
 
     if (nav_mutex && xSemaphoreTake(nav_mutex, 10)) {
 
-      if (gps && gps->gps_avaliable()) {
-        waypoint current_wayp = nav_man.get_current_waypoint();
-        auto pos = sens_fus.position;
+      if (gps_mutex && xSemaphoreTake(gps_mutex, 10)) {
 
-        if ((current_wayp.coords_in_axis.value_or(
-                 Eigen::Vector3f(INFINITY, INFINITY, INFINITY)) -
-             pos)
-                .norm() < 1.0) {
-          nav_man.waypoint_reached();
+        if (gps && gps->gps_avaliable()) {
+          waypoint current_wayp = nav_man.get_current_waypoint();
+          auto pos = sens_fus.position;
+
+          if ((current_wayp.coords_in_axis.value_or(
+                   Eigen::Vector3f(INFINITY, INFINITY, INFINITY)) -
+               pos)
+                  .norm() < 2.0) {
+            nav_man.waypoint_reached();
+          }
         }
+        xSemaphoreGive(gps_mutex);
       }
 
       xSemaphoreGive(nav_mutex);
     }
 
     // Release
-    if (imu_state_var.lin_accel_global.z < -8.0 && !released) {
-      released = true;
-      time_activation_queue = millis();
+    if (xSemaphoreTake(imu_state_mutex, 1)) {
+
+      if (imu_state_var.lin_accel_global.z < -7.0 && !released) {
+        released = true;
+        time_activation_queue = millis();
+      }
+      xSemaphoreGive(imu_state_mutex);
     }
 
     if (released && drone_cont &&
@@ -155,16 +152,23 @@ extern "C" void app_main(void) {
         !active) {
 
       dcont::reset_pid_states(drone_cont->drone_controller);
-      active = true;
-      // servo_set(SERVO_OPTIONS::UP);
 
-      xTaskCreate(
-          [](void *pvParameters) {
-            vTaskDelay(pdMS_TO_TICKS(700));
-            std::atomic_store(&killswitch_active, false);
-            vTaskDelete(NULL);
-          },
-          "lambda_task", 2048, NULL, 5, NULL);
+      if (xSemaphoreTake(imu_state_mutex, 100)) {
+
+        if (imu_state_var.lin_accel_global.z < -7.0) {
+          active = true;
+          xTaskCreate(
+              [](void *pvParameters) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+                std::atomic_store(&killswitch_active, false);
+                vTaskDelete(NULL);
+              },
+              "lambda_task", 4096, NULL, 5, NULL);
+        } else {
+          released = false;
+        }
+        xSemaphoreGive(imu_state_mutex);
+      }
     }
 
     // Logging
@@ -183,39 +187,58 @@ extern "C" void app_main(void) {
           lon = gps->gps->longitudeDegrees;
           alt = gps->gps->altitude;
 
-          xTaskCreate(
-              [](void *pvParameters) {
-                Eigen::Vector3f coords = Eigen::Vector3f::Zero();
-                vTaskDelay(10000);
-                for (int i = 0; i < 10; i++) {
-                  vTaskDelay(6000);
+          if (!first_wayp_was_set) {
+            first_wayp_was_set = true;
+            xTaskCreate(
+                [](void *pvParameters) {
+                  Eigen::Vector3f coords = Eigen::Vector3f::Zero();
+                  vTaskDelay(10000);
+                  int count = 0;
+                  for (int i = 0; i < 10; i++) {
+                    vTaskDelay(4000);
+
+                    if (gps_mutex &&
+                        xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
+
+                      auto lat = gps->gps->latitudeDegrees;
+                      auto lon = gps->gps->longitudeDegrees;
+                      coords +=
+                          Eigen::Vector3f(lat, lon, sens_fus.position.z());
+                      count++;
+
+                      xSemaphoreGive(gps_mutex);
+                    } else {
+                      ESP_LOGE("FIRST_WAYP", "FAILED TO GET MUTEX ON AVG");
+                    }
+                  }
+                  coords = coords / (float)count;
 
                   if (gps_mutex &&
                       xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
 
-                    auto lat = gps->gps->latitudeDegrees;
-                    auto lon = gps->gps->longitudeDegrees;
-                    auto alt = gps->gps->altitude;
-                    coords += Eigen::Vector3f(lat, lon, alt) * 0.1;
-
+                    gps->origin_lat = coords.x();
+                    gps->origin_long = coords.y();
                     xSemaphoreGive(gps_mutex);
+                  } else {
+                    ESP_LOGE("FIRST_WAYP", "FAILED TO GET MUTEX ON ORIGIN");
                   }
-                }
 
-                if (gps_mutex &&
-                    xSemaphoreTake(gps_mutex, (TickType_t)20) == pdTRUE) {
+                  if (nav_mutex && xSemaphoreTake(nav_mutex, 1000)) {
 
-                  gps->origin_lat = coords.x();
-                  gps->origin_long = coords.y();
-                  xSemaphoreGive(gps_mutex);
-                }
+                    nav_man.waypoints[0].coords = coords;
+                    nav_man.current_waypoint = 0;
+                    nav_man.waypoints[0].active = true;
+                    nav_man.waypoints[0].landing = true;
+                    xSemaphoreGive(nav_mutex);
+                  } else {
+                    ESP_LOGE("FIRST_WAYP", "FAILED TO GET NAV MUTEX");
+                    first_wayp_was_set = false;
+                  }
 
-                nav_man.waypoints[0].coords = coords;
-                nav_man.current_waypoint = 0;
-                nav_man.waypoints[0].active = true;
-                vTaskDelete(NULL);
-              },
-              "lambda_task_gps_init", 2048, NULL, 5, NULL); // FIXME: REMOVE
+                  vTaskDelete(NULL);
+                },
+                "lambda_task_gps_init", 8192, NULL, 5, NULL);
+          }
           gps_values = true;
         }
         sat_count = gps->gps->satellites;
@@ -266,13 +289,14 @@ extern "C" void app_main(void) {
                  motor_throttles[3], std::atomic_load(&killswitch_active));
       }
 
-      if (time_last_controller - millis() < CONNECTION_LOST_THRESHOLD) {
+      if (xSemaphoreTake(controller_input_semaphore, 10)) {
         ESP_LOGI(TAG, "Controller: (%f, %f), (%f, %f)",
                  current_controller_input.lx, current_controller_input.ly,
                  current_controller_input.rx, current_controller_input.ry);
+        xSemaphoreGive(controller_input_semaphore);
       }
-      // ESP_LOGI(TAG, "ROT: (%f, %f, %f)", imu_state_var.rot_euler.x(),
-      //          imu_state_var.rot_euler.y(), imu_state_var.rot_euler.z());
+      ESP_LOGI(TAG, "ROT: (%f, %f, %f)", imu_state_var.rot_euler.x(),
+               imu_state_var.rot_euler.y(), imu_state_var.rot_euler.z());
     }
 
     vTaskDelay(pdMS_TO_TICKS(5));

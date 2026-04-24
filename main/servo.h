@@ -9,3 +9,6 @@ enum SERVO_OPTIONS {
 void servo_init();
 
 void servo_set(SERVO_OPTIONS opt);
+
+void adc_init();
+int adc_read();

@@ -40,9 +40,10 @@ void setup() {
     return;
   }
   ESP_LOGI(TAG, "BARO SETUP COMPLETE.");
-  bme.setSampling(Adafruit_BME280::MODE_NORMAL, Adafruit_BME280::SAMPLING_X1,
-                  Adafruit_BME280::SAMPLING_X1, Adafruit_BME280::SAMPLING_NONE,
-                  Adafruit_BME280::FILTER_OFF, Adafruit_BME280::STANDBY_MS_500);
+  bme.setSampling(Adafruit_BME280::MODE_NORMAL, Adafruit_BME280::SAMPLING_X4,
+                  Adafruit_BME280::SAMPLING_X4, Adafruit_BME280::SAMPLING_NONE,
+                  Adafruit_BME280::FILTER_OFF,
+                  Adafruit_BME280::STANDBY_MS_62_5);
 
   bme_temp->printSensorDetails();
   bme_pressure->printSensorDetails();
@@ -142,7 +143,7 @@ void baro_poll_task(void *_) {
     }
 
     // BME280 config has a 20ms standby, so 20ms-50ms poll is ideal
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 

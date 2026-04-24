@@ -46,11 +46,11 @@ struct sens_fus_compl {
    * so at t=tau, were 63% of the way there
    * at t=3*tau, were 95% of the way there
    */
-  Eigen::Vector3f tau_gps_pos = {4.0f, 4.0f, 10.0};
-  Eigen::Vector3f tau_gps_vel = {4.0f, 4.0f, INFINITY};
+  Eigen::Vector3f tau_gps_pos = {2.0f, 2.0f, 2.0};
+  Eigen::Vector3f tau_gps_vel = {1.0f, 1.0f, INFINITY};
 
   Eigen::Vector3f tau_baro_pos = {INFINITY, INFINITY, INFINITY};
-  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 4.0f};
+  Eigen::Vector3f tau_baro_vel = {INFINITY, INFINITY, 2.0f};
 
   Eigen::Matrix3f yaw_rotation_matrix = Eigen::Matrix3f::Identity().eval();
 

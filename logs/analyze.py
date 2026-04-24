@@ -6,7 +6,7 @@ import pandas as pd
 from pandas.io.parsers.readers import csv
 
 # 1. Define your log file path
-file_path = "output_9.log"
+file_path = "output_10.log"
 
 # 2. Extract and parse data
 cleaned_data = []

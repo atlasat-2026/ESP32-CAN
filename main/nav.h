@@ -49,21 +49,23 @@ struct drone_nav {
   }
 
   void waypoint_reached() {
+    int start_index = this->current_waypoint;
     waypoint wayp = waypoints[this->current_waypoint];
     if (wayp.landing) {
       this->waypoints[8] = waypoint{
           .coords = Eigen::Vector3f(wayp.coords.x(), wayp.coords.y(), 0.0f),
           .coords_in_axis = std::nullopt};
-      current_waypoint = 8;
+      this->current_waypoint = 8;
 
       return;
     }
 
-    int i = this->current_waypoint + 1;
-    while (i != this->current_waypoint) {
+    int i = start_index + 1;
+    while (i != start_index) {
       bool active = waypoints[i].active;
       if (active) {
         this->current_waypoint = i;
+        return;
       }
       i++;
       i = i % 8;

@@ -163,58 +163,31 @@ struct drone_cont_state {
   void update_input() {
 
     packet_controller_input c;
-    bool input_was_set = false;
 
     switch (atomic_load(&this->current_input_mode)) {
 
     case INPUT_TYPE::ACRO: {
-      if (controller_input_semaphore &&
-          xSemaphoreTake(controller_input_semaphore, 10)) {
-        c = current_controller_input;
-
-        xSemaphoreGive(controller_input_semaphore);
-        float ly = 0.6 * c.ly + 0.15;
-
-        auto inp = dcont::Input{.joystick = {.throttle_input = ly,
-                                             .roll_input = c.rx,
-                                             .yaw_input = c.lx,
-                                             .pitch_input = -c.ry},
-                                .acceleration = {0.0, 0.0, 0.0},
-                                .rotation = {0.0, 0.0, 0.0},
-                                .velocity = {0.0, 0.0, 0.0},
-                                .position = {0.0, 0.0, 0.0},
-                                .mode = dcont::ModeInput::Acro};
-
-        dcont::set_input(drone_controller, inp);
-        this->last_input = inp;
-        input_was_set = true;
-      }
-    } break;
-
-    case INPUT_TYPE::LEVEL: {
-      if (controller_input_semaphore &&
-          xSemaphoreTake(controller_input_semaphore, 10)) {
+      if (xSemaphoreTake(controller_input_semaphore, 10)) {
+        // if (millis() - time_last_controller > CONNECTION_LOST_THRESHOLD) {
+        //   current_controller_input = {0, 0, 0, 0};
+        // }
         c = current_controller_input;
 
         xSemaphoreGive(controller_input_semaphore);
 
-        float ly = 0.6 * c.ly + 0.15;
-
-        auto inp =
-            dcont::Input{.joystick = {.throttle_input = ly,
+        dcont::set_input(
+            drone_controller,
+            dcont::Input{.joystick = {.throttle_input = c.ly,
                                       .roll_input = c.rx,
                                       .yaw_input = c.lx,
-                                      .pitch_input = -c.ry},
+                                      .pitch_input = c.ry},
                          .acceleration = {0.0, 0.0, 0.0},
-                         .rotation = {-c.ry * 7 * 0.087f, c.rx * 7 * 0.087f,
-                                      c.lx * (float)M_PI},
+                         .rotation = {c.ry * 3, c.rx * 3, c.lx * 3},
                          .velocity = {0.0, 0.0, 0.0},
                          .position = {0.0, 0.0, 0.0},
-                         .mode = dcont::ModeInput::Rotation};
-
-        dcont::set_input(drone_controller, inp);
-        this->last_input = inp;
-        input_was_set = true;
+                         .mode = dcont::ModeInput::Rotation});
+      } else {
+        drone_cont_stabilize();
       }
     } break;
 

@@ -71,11 +71,15 @@ BNO08x *setup_imu() {
       local_state->rot_euler =
           Eigen::Vector3f(sens_euler.x, sens_euler.y, sens_euler.z);
 
+      // ESP_LOGI("ROT", "(%f, %f, %f, %f)", sens_rot.real, sens_rot.i,
+      // sens_rot.j,
+      //          sens_rot.k);
+
       // Eigen::Quaternionf q_global_yaw(
       //     Eigen::AngleAxisf(-M_PI / 2.0, Eigen::Vector3f::UnitZ()));
       // local_state->rot = q_global_yaw * local_state->rot;
 
-      local_state->rot.normalize();
+      // local_state->rot.normalize();
 
       // {.i = sens_rot.i, .j = sens_rot.j, .k = sens_rot.k, .w =
       // sens_rot.real}; local_state->rot_euler = {sens_euler.x, sens_euler.y,
@@ -90,7 +94,6 @@ BNO08x *setup_imu() {
 
       auto cal_gyro = imu->rpt.cal_gyro.get();
       local_state->angvel = {cal_gyro.x, cal_gyro.y, cal_gyro.z};
-      // ESP_LOGI("ROT", "angvel_z: %f", cal_gyro.z);
     }
 
     if (imu->rpt.linear_accelerometer.has_new_data()) {
@@ -143,6 +146,8 @@ BNO08x *setup_imu() {
       if (xSemaphoreTake(imu_state_mutex, 0)) {
         imu_state_var = *local_state;
         xSemaphoreGive(imu_state_mutex);
+      } else {
+        ESP_LOGE(TAG, "FAILED TO GET IMU STATE MUTEX");
       }
     }
   });

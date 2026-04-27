@@ -107,25 +107,23 @@ void send_packet_getter(PACKET_TYPE requested_type) {
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_POSITION) {
 
-    if (xSemaphoreTake(nav_mutex, 10)) {
-      if (xSemaphoreTake(imu_state_mutex, 10)) {
-        Eigen::Vector3f local_vel =
-            imu_state_var.rot.inverse() * sens_fus.velocity;
-        resp_packet = create_packet_pooled(
-            PACKET_TYPE::INFO_DRONE_POSITION,
-            packet_info_drone_position{
-                .trans = {sens_fus.position.x(), sens_fus.position.y(),
-                          sens_fus.position.z()},
-                .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
-                .rot = {imu_state_var.rot.w(), imu_state_var.rot.x(),
-                        imu_state_var.rot.y(), imu_state_var.rot.z()},
-                .press = env_sens::get_pressure(),
-                .temp = env_sens::get_temperature(),
-            });
-        xSemaphoreGive(imu_state_mutex);
-      }
-      xSemaphoreGive(nav_mutex);
+    imu_state state;
+    if (xSemaphoreTake(imu_state_mutex, 20)) {
+      state = imu_state_var;
+      xSemaphoreGive(imu_state_mutex);
     }
+    Eigen::Vector3f local_vel = state.rot.inverse() * sens_fus.velocity;
+
+    ESP_LOGE("Radio tx", "[f,%f,%f,%f]", state.rot.w(), state.rot.x(),
+             state.rot.y(), state.rot.z());
+    resp_packet = create_packet_pooled(
+        PACKET_TYPE::INFO_DRONE_POSITION,
+        packet_info_drone_position{
+            .trans = {sens_fus.position.x(), sens_fus.position.y(),
+                      sens_fus.position.z()},
+            .vel = {local_vel.x(), local_vel.y(), local_vel.z()},
+            .rot = {state.rot.w(), state.rot.x(), state.rot.y(), state.rot.z()},
+        });
   }
 
   if (requested_type == PACKET_TYPE::INFO_DRONE_STATUS) {
